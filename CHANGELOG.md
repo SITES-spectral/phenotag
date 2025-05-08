@@ -9,11 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - New UI guide documentation (`docs/ui_guide.md`)
+- Persistent annotation system that saves annotations to YAML files
+- New `save_annotations` and `load_annotations` functions in io_tools
+- Documentation of the annotation storage system (`docs/annotation_system.md`)
 
 ### Changed
 - Renamed session configuration file to `sites_spectral_phenocams_session_config.yaml` for better descriptiveness
 - Updated README.md with more comprehensive setup instructions and feature descriptions
 - Enhanced installation instructions to include virtual environment setup
+- Enhanced `find_phenocam_images` to check for existing annotation files
+- Updated UI's Save Annotations button to properly save annotations to disk
+- Annotations now stored at `{base_dir}/{station_name}/phenocams/products/{instrument_id}/L1/{year}/{day_of_year}/annotations.yaml`
+- Improved UI: moved scan button out of expander for better visibility
+- Added automatic scanning on session load with saved configuration
+- Enhanced progress feedback during scanning with status updates
 
 ## [0.1.0] - 2025-05-08
 
@@ -42,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Image display issues in the data editor by implementing a split-layout approach
 - Import errors caused by relative imports
 - Deprecated parameter warnings by updating to current Streamlit API
+- Annotations are now properly persisted between sessions
+- Added better error messages and user feedback for annotation operations
 
 ## [0.0.1] - 2025-05-01
 

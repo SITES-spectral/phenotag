@@ -9,6 +9,7 @@ A tool for annotating phenocam images with quality indicators and regions of int
 - Interactive data directory configuration with simplified workflow
 - Memory-efficient image loading and processing
 - Image annotation capabilities for quality assessment and ROI definition
+- Persistent annotations stored in YAML files alongside image data
 - Session state persistence via descriptive YAML configuration files
 - Real-time feedback with status indicators and progress tracking
 
@@ -146,6 +147,23 @@ Sessions can be manually saved or reset using the clearly labeled buttons in the
 When working with annotations, the UI provides additional options:
 - 💾 Save Annotations: Save the current annotations and session state
 - 🔄 Reset Annotations: Reset the current view of annotations
+
+## Annotation System
+
+PhenoTag stores image annotations in YAML files alongside the images they describe:
+
+```
+{data_dir}/{station}/phenocams/products/{instrument}/L1/{year}/{doy}/annotations.yaml
+```
+
+The annotation system:
+- Automatically loads existing annotations when scanning images
+- Saves annotations when the user clicks "Save Annotations"
+- Stores quality flags and ROI information for each image
+- Persists annotations between sessions
+- Handles errors gracefully with user feedback
+
+For detailed documentation, see `docs/annotation_system.md`.
 
 ## Development
 

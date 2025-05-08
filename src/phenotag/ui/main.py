@@ -147,6 +147,10 @@ def main():
         st.session_state.selected_year = session_config.get('selected_year')
     if 'selected_day' not in st.session_state:
         st.session_state.selected_day = session_config.get('selected_day')
+    if 'image_data' not in st.session_state:
+        st.session_state.image_data = {}
+        
+    # Automatic scanning is handled after sidebar creation
     
     # Load config data
     config = load_config_files()
@@ -257,47 +261,118 @@ def main():
                     st.success("Session reset successfully!")
                     time.sleep(1)  # Brief pause to show the message
                     st.rerun()
-            
-            # Scan button with better UI
-            st.divider()
+        
+        # Move scan button outside the expander for better visibility
+        st.divider()
+        
+        # Check if we have the necessary data to enable the scan button
+        can_scan = normalized_name and selected_instrument and st.session_state.data_directory
+        valid_dir = can_scan and os.path.isdir(st.session_state.data_directory)
+        
+        # Status section with scan button
+        scan_header_col1, scan_header_col2 = st.columns([3, 1])
+        with scan_header_col1:
             st.subheader("Image Scanner")
-            
-            if normalized_name and selected_instrument and st.session_state.data_directory:
-                if os.path.isdir(st.session_state.data_directory):
-                    # Store scan button click in session state
-                    if st.button("🔍 Scan for Images", type="primary", use_container_width=True):
-                        st.session_state.scan_requested = True
-                        st.session_state.scan_instrument = selected_instrument
-                        st.session_state.scan_station = normalized_name
-                        # Exit the expander to avoid nesting st.status inside
-                        st.write("Starting scan...")
-                else:
-                    st.error("⚠️ Invalid directory path")
+        with scan_header_col2:
+            # Show a small status indicator
+            if valid_dir:
+                st.success("Ready", icon="✅")
+            elif can_scan:
+                st.warning("Invalid path", icon="⚠️")
+            else:
+                st.info("Configure", icon="ℹ️")
+        
+        # Create the scan button with appropriate state
+        if can_scan:
+            if valid_dir:
+                if st.button("🔍 Scan for Images", type="primary", use_container_width=True):
+                    st.session_state.scan_requested = True
+                    st.session_state.scan_instrument = selected_instrument
+                    st.session_state.scan_station = normalized_name
+                    st.write("Starting scan...")
+                    st.rerun()  # Rerun to start the scan in a clean state
+            else:
+                st.error("⚠️ Invalid directory path. Please enter a valid data directory.")
+                # Disabled button for better UX
+                st.button("🔍 Scan for Images", disabled=True, use_container_width=True)
+        else:
+            # Show a disabled button with tooltip
+            st.button(
+                "🔍 Scan for Images", 
+                disabled=True, 
+                help="Select a station, instrument, and valid data directory first",
+                use_container_width=True
+            )
+    
+    # Check if we need to auto-scan based on loaded configuration
+    if (not hasattr(st.session_state, 'scan_requested') or not st.session_state.scan_requested) and \
+       'image_data' not in st.session_state and \
+       st.session_state.data_directory and \
+       st.session_state.selected_station and \
+       st.session_state.selected_instrument and \
+       os.path.isdir(st.session_state.data_directory):
+        # We have valid configuration but no image data - set up auto-scan
+        normalized_name = station_name_to_normalized.get(st.session_state.selected_station)
+        if normalized_name:
+            st.session_state.scan_requested = True
+            st.session_state.scan_station = normalized_name
+            st.session_state.scan_instrument = st.session_state.selected_instrument
+            st.session_state.auto_scan = True  # Flag to indicate this is an automatic scan
+            st.rerun()  # Rerun to trigger the scan in a clean state
     
     # Handle scanning request outside of expander
     if hasattr(st.session_state, 'scan_requested') and st.session_state.scan_requested:
         scan_container = st.container()
         with scan_container:
-            # Create a heading for the scan operation
-            st.subheader("Scanning for images...")
+            # Check if this is an automatic scan
+            is_auto_scan = hasattr(st.session_state, 'auto_scan') and st.session_state.auto_scan
+            
+            # Display appropriate heading based on scan type
+            if is_auto_scan:
+                st.subheader("Auto-scanning based on saved configuration...")
+            else:
+                st.subheader("Scanning for images...")
+            
             st.write("Starting image scan...")
-            # Show progress indicator
+            # Show progress indicators
             progress_bar = st.progress(0)
+            status_text = st.empty()
             
             # Get values from session state
             normalized_name = st.session_state.scan_station
             selected_instrument = st.session_state.scan_instrument
             
             # Find images for the selected instrument
-            st.write(f"Looking for images in {normalized_name}/{selected_instrument}...")
-            image_data = find_phenocam_images(
-                base_dir=st.session_state.data_directory,
-                station_name=normalized_name,
-                instrument_id=selected_instrument
-            )
+            status_text.write(f"Looking for images in {normalized_name}/{selected_instrument}...")
+            progress_bar.progress(25)
             
-            # Update progress
-            progress_bar.progress(100)
+            try:
+                # Execute the search with progress updates
+                image_data = find_phenocam_images(
+                    base_dir=st.session_state.data_directory,
+                    station_name=normalized_name,
+                    instrument_id=selected_instrument
+                )
+                
+                # Update progress between steps
+                progress_bar.progress(50)
+                status_text.write("Processing image data...")
+                
+                # Small delay to show progress
+                time.sleep(0.5)
+                progress_bar.progress(75)
+                status_text.write("Finalizing...")
+                
+                # Small delay for visual feedback
+                time.sleep(0.5)
+                progress_bar.progress(100)
+                status_text.write("✅ Scan completed successfully!")
+            except Exception as e:
+                # Handle errors
+                progress_bar.progress(100)
+                status_text.write(f"❌ Error during scan: {str(e)}")
+                st.error(f"Error during scan: {str(e)}")
+                image_data = {}
             
             if image_data:
                 # Store in session state for later use
@@ -305,9 +380,10 @@ def main():
                     st.session_state.image_data = {}
                 st.session_state.image_data[f"{normalized_name}_{selected_instrument}"] = image_data
                 
-                # Reset year and day selections
-                st.session_state.selected_year = None
-                st.session_state.selected_day = None
+                # Reset year and day selections only if not in auto-scan mode
+                if not is_auto_scan:
+                    st.session_state.selected_year = None
+                    st.session_state.selected_day = None
                 
                 # Auto-save the session
                 save_session_config()
@@ -317,7 +393,10 @@ def main():
                 years.sort(reverse=True)
                 
                 # Show success message
-                st.success(f"Found images for {selected_instrument}!")
+                if is_auto_scan:
+                    st.success(f"Successfully loaded images for {selected_instrument} from saved session!")
+                else:
+                    st.success(f"Found images for {selected_instrument}!")
                 
                 # Show metrics
                 total_days = sum(len(image_data[year]) for year in years)
@@ -339,8 +418,10 @@ def main():
                     f"{st.session_state.data_directory}/{normalized_name}/phenocams/products/{selected_instrument}/L1/..."
                 )
             
-            # Reset scan request flag
+            # Reset scan request flags
             st.session_state.scan_requested = False
+            if hasattr(st.session_state, 'auto_scan'):
+                st.session_state.auto_scan = False
     
     # Display the selected station in the main content area with better styling
     if selected_station:
