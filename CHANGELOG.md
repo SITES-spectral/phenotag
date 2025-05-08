@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved UI: moved scan button out of expander for better visibility
 - Added automatic scanning on session load with saved configuration
 - Enhanced progress feedback during scanning with status updates
+- Replaced sidebar status display with toast notifications for better UX
+- Added contextual error and info messages for invalid configurations
+- Started UI refactoring with a new three-container layout (top, center, bottom) 
+- Implemented a 1:5:1 column ratio in the center container for better content organization
+- Removed all titles and subtitles from the main canvas for a cleaner interface
+- Added year selector to the sidebar for easier navigation through yearly data
+- Improved organization of UI controls with logical grouping in the sidebar
 
 ## [0.1.0] - 2025-05-08
 

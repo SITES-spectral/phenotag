@@ -170,7 +170,6 @@ def main():
     # Add title to the sidebar
     with st.sidebar:
         st.title("PhenoTag")
-        st.caption("Phenological Annotation Tool")
         
         # Add separator for visual clarity
         st.divider()
@@ -186,6 +185,11 @@ def main():
             index=default_index,
             help="Choose a monitoring station from the list"
         )
+        
+        # Reset notification flag if station selection changed
+        if st.session_state.selected_station != selected_station and hasattr(st.session_state, 'ready_notified'):
+            st.session_state.ready_notified = False
+            
         st.session_state.selected_station = selected_station
         
         normalized_name = None
@@ -212,12 +216,52 @@ def main():
                     index=default_instr_index,
                     help="Choose a phenocam instrument from the selected station"
                 )
+                
+                # Reset notification flag if instrument selection changed
+                if st.session_state.selected_instrument != selected_instrument and hasattr(st.session_state, 'ready_notified'):
+                    st.session_state.ready_notified = False
+                    
                 st.session_state.selected_instrument = selected_instrument
+                
+                # Add year selector if we have image data for this instrument
+                key = f"{normalized_name}_{selected_instrument}"
+                if 'image_data' in st.session_state and key in st.session_state.image_data:
+                    # Get years from image data
+                    image_data = st.session_state.image_data[key]
+                    years = list(image_data.keys())
+                    years.sort(reverse=True)  # Sort in descending order (newest first)
+                    
+                    if years:
+                        
+                        # Default to the latest year if none selected
+                        if ('selected_year' not in st.session_state or 
+                            st.session_state.selected_year not in years):
+                            st.session_state.selected_year = years[0]
+                        
+                        # Year selector
+                        selected_year = st.selectbox(
+                            "Select Year", 
+                            years,
+                            index=years.index(st.session_state.selected_year) if st.session_state.selected_year in years else 0,
+                            help="Choose a year to view"
+                        )
+                        
+                        # Update session state if changed
+                        if selected_year != st.session_state.selected_year:
+                            st.session_state.selected_year = selected_year
+                            # Reset day selection when year changes
+                            if 'selected_day' in st.session_state:
+                                st.session_state.selected_day = None
+                            # Auto-save when selection changes
+                            save_session_config()
+                            # Trigger a rerun to update the UI
+                            st.rerun()
             else:
                 st.warning("No phenocams available for this station")
                 selected_instrument = None
                 st.session_state.selected_instrument = None
         
+        st.divider()
         # Add configuration expander
         with st.expander("Configuration"):
             # Data directory input with session persistence
@@ -231,6 +275,9 @@ def main():
             # Update session state if changed
             if data_dir != st.session_state.data_directory:
                 st.session_state.data_directory = data_dir
+                # Reset the notification flag when directory changes
+                if hasattr(st.session_state, 'ready_notified'):
+                    st.session_state.ready_notified = False
                 # Auto-save when data directory changes
                 save_session_config()
             
@@ -250,7 +297,7 @@ def main():
                 if st.button("🔄 Reset Session", use_container_width=True):
                     # Clear session state without using status container
                     for key in ['data_directory', 'selected_station', 'selected_instrument', 
-                                'selected_year', 'selected_day', 'image_data']:
+                                'selected_year', 'selected_day', 'image_data', 'ready_notified']:
                         if key in st.session_state:
                             if key == 'image_data':
                                 st.session_state[key] = {}
@@ -262,25 +309,22 @@ def main():
                     time.sleep(1)  # Brief pause to show the message
                     st.rerun()
         
-        # Move scan button outside the expander for better visibility
-        st.divider()
         
         # Check if we have the necessary data to enable the scan button
         can_scan = normalized_name and selected_instrument and st.session_state.data_directory
         valid_dir = can_scan and os.path.isdir(st.session_state.data_directory)
         
-        # Status section with scan button
-        scan_header_col1, scan_header_col2 = st.columns([3, 1])
-        with scan_header_col1:
-            st.subheader("Image Scanner")
-        with scan_header_col2:
-            # Show a small status indicator
-            if valid_dir:
-                st.success("Ready", icon="✅")
-            elif can_scan:
-                st.warning("Invalid path", icon="⚠️")
-            else:
-                st.info("Configure", icon="ℹ️")
+        
+        # Use toast for ready status notification
+        if valid_dir and not hasattr(st.session_state, 'ready_notified'):
+            st.toast("Scanner is ready! Click 'Scan for Images' to continue.", icon="✅")
+            st.session_state.ready_notified = True
+        
+        # Only show warnings/info if there's an issue
+        if can_scan and not valid_dir:
+            st.warning("Invalid directory path. Please enter a valid data directory.", icon="⚠️")
+        elif not can_scan and st.session_state.data_directory:
+            st.info("Please select a station and instrument to continue.", icon="ℹ️")
         
         # Create the scan button with appropriate state
         if can_scan:
@@ -423,17 +467,67 @@ def main():
             if hasattr(st.session_state, 'auto_scan'):
                 st.session_state.auto_scan = False
     
-    # Display the selected station in the main content area with better styling
-    if selected_station:
-        st.header(f"Station: {selected_station}", divider="rainbow")
+    # Create three main containers for the new layout
+    top_container = st.container()
+    center_container = st.container()
+    bottom_container = st.container()
+    
+    if image_data:
+        # Top container is left empty as requested
+        with top_container:
+            # No titles or subtitles in the main canvas
+            doys = list(image_data[st.session_state.selected_year].keys())
+            doy = st.selectbox("Select a day", doys)
+            daily_filepaths = [f for f in image_data[st.session_state.selected_year][doy]]
         
-        # Display the selected instrument if one was selected
-        if selected_instrument:
-            st.subheader(f"Phenocam: {selected_instrument}", divider=True)
+        with center_container:
+            # Create three columns with the specified ratio
+            left_col, main_col, right_col = st.columns([1, 5, 1])
             
-            # Display image data if available in session state
+            # Add temporary text to visualize the columns
+            with left_col:
+                df = pd.DataFrame( index= enumerate(daily_filepaths), data=daily_filepaths)
+                event = st.dataframe(
+                    df,
+                    #column_config=column_configuration,
+                    use_container_width=True,
+                    hide_index=True,
+                    on_select="rerun",
+                    selection_mode="single-row",
+            )
+
+            if event:
+                
+                index = event.selection.rows[0]
+                filepath = daily_filepaths[index]
+                
+            
+                with main_col:
+                    if filepath:
+                        processor = ImageProcessor()
+                
+                        processor.load_image(filepath)
+                        img = processor.get_image()
+                        st.image(img, caption=os.path.basename(filepath), use_container_width=True)
+                        
+            
+            with right_col:
+                pass
+        
+        # Bottom container
+        with bottom_container:
+            st.write(image_data.get(st.session_state.selected_year))       
+        # Store important data in session state, but don't display titles/subtitles
+    if selected_station:
+        # Store station info in session state but don't display
+        st.session_state.current_station = selected_station
+        if selected_instrument:
+            # Store instrument info in session state but don't display
+            st.session_state.current_instrument = selected_instrument
+            
+            # Skip most of the image data display for now during refactoring
             key = f"{normalized_name}_{selected_instrument}"
-            if 'image_data' in st.session_state and key in st.session_state.image_data:
+            if False and 'image_data' in st.session_state and key in st.session_state.image_data:
                 image_data = st.session_state.image_data[key]
                 
                 # Show summary statistics
@@ -737,10 +831,13 @@ def main():
                         else:
                             st.info(f"No images found for Day {selected_day}")
             else:
+                # Minimal placeholder for info message
                 if st.session_state.data_directory and os.path.isdir(st.session_state.data_directory):
-                    st.info("Click 'Scan for images' in the Configuration panel to view image data")
+                    # This info will be displayed in the main layout in the future
+                    pass
                 else:
-                    st.info("Enter a valid data directory in the Configuration section to view image data")
+                    # This info will be displayed in the main layout in the future
+                    pass
 
 
 if __name__ == "__main__":
