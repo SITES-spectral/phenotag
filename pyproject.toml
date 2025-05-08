@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "phenotag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml>=6.0.2",
+    "streamlit>=1.45.0",
+    "pydantic>=2.0.0",
+    "requests>=2.28.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "psutil>=5.9.0",
+    "plotly>=5.15.0",
+]
+
+[project.scripts]
+phenotag = "phenotag.cli.main:main"
+
+[tool.streamlit]
+entry_point = "phenotag.ui.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "--cov=phenotag --cov-report=term-missing --cov-report=html"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phenotag"]
