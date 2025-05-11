@@ -424,17 +424,24 @@ def main():
                     st.session_state.image_data = {}
                 st.session_state.image_data[f"{normalized_name}_{selected_instrument}"] = image_data
                 
-                # Reset year and day selections only if not in auto-scan mode
-                if not is_auto_scan:
-                    st.session_state.selected_year = None
-                    st.session_state.selected_day = None
-                
-                # Auto-save the session
-                save_session_config()
-                
-                # Display summary
+                # Get the years from the image data first
                 years = list(image_data.keys())
                 years.sort(reverse=True)
+
+                # Set the year to the latest year regardless of scan mode
+                # This ensures we always have a year selected after scanning
+                if years:
+                    st.session_state.selected_year = years[0]  # Latest year (they're sorted in reverse)
+
+                    # Also set a default day if available for that year
+                    if years[0] in image_data and image_data[years[0]]:
+                        days = list(image_data[years[0]].keys())
+                        days.sort(reverse=True)  # Sort days in reverse order too
+                        if days:
+                            st.session_state.selected_day = days[0]
+
+                # Auto-save the session
+                save_session_config()
                 
                 # Show success message
                 if is_auto_scan:
@@ -466,57 +473,141 @@ def main():
             st.session_state.scan_requested = False
             if hasattr(st.session_state, 'auto_scan'):
                 st.session_state.auto_scan = False
+
+            # Add a small delay to ensure metrics are visible, then rerun to refresh UI
+            time.sleep(1.5)
+            st.rerun()
     
     # Create three main containers for the new layout
     top_container = st.container()
     center_container = st.container()
     bottom_container = st.container()
-    
+
+    # Check if we have image data in the session state
+    key = f"{normalized_name}_{selected_instrument}" if normalized_name and selected_instrument else None
+    image_data = st.session_state.image_data.get(key, {}) if key and 'image_data' in st.session_state else {}
+
+    # Debug info to help with troubleshooting
+    with st.sidebar.expander("Debug Info", expanded=False):
+        st.write(f"Selected key: {key}")
+        st.write(f"Year: {st.session_state.selected_year if 'selected_year' in st.session_state else 'None'}")
+        if image_data:
+            st.write(f"Years in data: {list(image_data.keys())}")
+        else:
+            st.write("No image data found")
+
     if image_data:
-        # Top container is left empty as requested
-        with top_container:
-            # No titles or subtitles in the main canvas
-            doys = list(image_data[st.session_state.selected_year].keys())
-            doy = st.selectbox("Select a day", doys)
-            daily_filepaths = [f for f in image_data[st.session_state.selected_year][doy]]
+        # Check if we have a selected year
+        selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
+
+        # If no year or the selected year isn't in our data, select the most recent one
+        if not selected_year or selected_year not in image_data:
+            years = list(image_data.keys())
+            years.sort(reverse=True)
+            if years:
+                selected_year = years[0]
+                st.session_state.selected_year = selected_year
+                # Auto-save this change
+                save_session_config()
+
+        # Only continue if we now have a valid year
+        if selected_year and selected_year in image_data:
+            # Top container is left empty as requested
+            with top_container:
+                # No titles or subtitles in the main canvas
+                doys = list(image_data[selected_year].keys())
+                doys.sort(reverse=True)  # Sort days in descending order
+
+                # Handle case when no day is selected
+                if 'selected_day' not in st.session_state or not st.session_state.selected_day or st.session_state.selected_day not in doys:
+                    selected_day = doys[0] if doys else None
+                    st.session_state.selected_day = selected_day
+                else:
+                    selected_day = st.session_state.selected_day
+
+                # Create the day selector only if we have days
+                if doys:
+                    selected_day = st.selectbox("Select a day", doys, index=doys.index(selected_day) if selected_day in doys else 0)
+
+                    # Update the selected day in session state
+                    if selected_day != st.session_state.selected_day:
+                        st.session_state.selected_day = selected_day
+                        save_session_config()
+                        st.rerun()
+                else:
+                    st.warning(f"No days found for year {selected_year}")
+                    selected_day = None
+
+                # Only get file paths if we have a selected day
+                if selected_day:
+                    daily_filepaths = [f for f in image_data[selected_year][selected_day]]
+                else:
+                    daily_filepaths = []
         
         with center_container:
-            # Create three columns with the specified ratio
-            left_col, main_col, right_col = st.columns([1, 5, 1])
-            
-            # Add temporary text to visualize the columns
-            with left_col:
-                df = pd.DataFrame( index= enumerate(daily_filepaths), data=daily_filepaths)
-                event = st.dataframe(
-                    df,
-                    #column_config=column_configuration,
-                    use_container_width=True,
-                    hide_index=True,
-                    on_select="rerun",
-                    selection_mode="single-row",
-            )
+            # Only display image data if we have both a year and a day selected
+            if (selected_year and selected_year in image_data and
+                'selected_day' in st.session_state and st.session_state.selected_day in image_data[selected_year]):
 
-            if event:
-                
-                index = event.selection.rows[0]
-                filepath = daily_filepaths[index]
-                
-            
-                with main_col:
-                    if filepath:
-                        processor = ImageProcessor()
-                
-                        processor.load_image(filepath)
-                        img = processor.get_image()
-                        st.image(img, caption=os.path.basename(filepath), use_container_width=True)
-                        
-            
-            with right_col:
-                pass
-        
-        # Bottom container
+                selected_day = st.session_state.selected_day
+
+                # Create two columns with the specified ratio [2,5]
+                left_col, main_col = st.columns([2, 5])
+
+                # Make sure we have file paths before attempting to display them
+                if daily_filepaths:
+                    # Add temporary text to visualize the columns
+                    with left_col:
+                        # Create a DataFrame with filenames (not full paths) for better display
+                        filenames = [os.path.basename(path) for path in daily_filepaths]
+                        df = pd.DataFrame(data={"Filename": filenames, "Path": daily_filepaths})
+                        event = st.dataframe(
+                            df,
+                            column_config={
+                                "Filename": st.column_config.TextColumn("File"),
+                                # Store path but don't show it as a column
+                                "Path": st.column_config.TextColumn("Path")
+                            },
+                            column_order=["Filename"],  # Only show filename column
+                            use_container_width=True,
+                            hide_index=True,
+                            on_select="rerun",
+                            selection_mode="single-row",
+                        )
+
+                        # Also add a text description of how many images are available
+                        st.write(f"{len(daily_filepaths)} images available for day {selected_day}")
+
+                    if event and hasattr(event, 'selection') and event.selection.rows:
+                        # Get the selected index
+                        index = event.selection.rows[0]
+                        filepath = daily_filepaths[index]
+
+                        # Display the selected image
+                        with main_col:
+                            if filepath:
+                                processor = ImageProcessor()
+
+                                processor.load_image(filepath)
+                                img = processor.get_image()
+                                st.image(img, caption=os.path.basename(filepath), use_container_width=True)
+                    else:
+                        # If no image is selected, display a prompt to select one
+                        with main_col:
+                            st.info("👈 Select an image from the list to view it here")
+                else:
+                    # No files found for this day
+                    st.warning(f"No image files found for day {selected_day} in year {selected_year}")
+            else:
+                # No year or day selected
+                st.info("Select a year and day to view images")
+
+        # Bottom container for additional information
         with bottom_container:
-            st.write(image_data.get(st.session_state.selected_year))       
+            if selected_year and selected_year in image_data:
+                # Create an expander to show the raw data (useful for debugging)
+                with st.expander("Raw Data for Selected Year", expanded=False):
+                    st.write(image_data.get(selected_year))
         # Store important data in session state, but don't display titles/subtitles
     if selected_station:
         # Store station info in session state but don't display
