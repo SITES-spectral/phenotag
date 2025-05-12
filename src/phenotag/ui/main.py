@@ -684,7 +684,12 @@ def main():
                                 processor = ImageProcessor()
                                 processor.load_image(filepath)
                                 img = processor.get_image()
-                                st.image(img, caption=os.path.basename(filepath), use_container_width=True)
+                                if img is not None:
+                                    # Convert BGR to RGB for correct color display
+                                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                                    st.image(img_rgb, caption=os.path.basename(filepath), use_container_width=True)
+                                else:
+                                    st.error(f"Failed to load image: {filepath}")
                         else:
                             st.info("No image selected. Click on a row to view an image.")
                 else:
@@ -780,12 +785,9 @@ def main():
                                     if processor.load_image(image_path):
                                         img = processor.get_image()
                                         if img is not None:
-                                            # Convert BGR to RGB for Streamlit
-                                            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                                            # Display image in a centered layout
-                                            col1, col2, col3 = st.columns([1, 3, 1])
-                                            with col2:
-                                                st.image(img, caption=os.path.basename(image_path), use_container_width=True)
+                                            # Convert BGR to RGB for correct color display
+                                            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                                            st.image(img_rgb, caption=os.path.basename(image_path), use_container_width=True)
                                             return True
                                     else:
                                         st.error(f"Failed to load image: {image_path}")
