@@ -139,6 +139,83 @@ def save_session_config():
     return success
 
 
+def load_instrument_rois():
+    """
+    Load ROI definitions for current instrument from stations configuration.
+    Returns True if ROIs were successfully loaded, False otherwise.
+    """
+    if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+        scan_info = st.session_state.scan_info
+        station_name = scan_info['station_name']
+        instrument_id = scan_info['instrument_id']
+
+        # Load configuration
+        config = load_config_files()
+        stations_config = config.get('stations', {}).get('stations', {})
+
+        # Extract ROIs for this instrument
+        rois_found = False
+
+        # Find the station in the configuration by normalized name
+        if station_name in stations_config:
+            station_data = stations_config[station_name]
+
+            # Check if phenocams exists
+            if 'phenocams' not in station_data:
+                print(f"ERROR: 'phenocams' key missing in station data")
+                return False
+            elif 'platforms' not in station_data['phenocams']:
+                print(f"ERROR: 'platforms' key missing in phenocams data")
+                return False
+            else:
+                # List available platforms
+                platforms = station_data['phenocams']['platforms']
+
+                # Check each platform for the instrument
+                for platform_type, platform_data in platforms.items():
+                    if 'instruments' not in platform_data:
+                        continue
+
+                    # List instruments in this platform
+                    instruments = platform_data['instruments']
+
+                    if instrument_id in instruments:
+                        instrument_config = instruments[instrument_id]
+
+                        # Check if the instrument has ROIs
+                        if 'rois' in instrument_config:
+                            rois = instrument_config['rois']
+
+                            # Check if it has ROIs defined
+                            if rois:
+                                try:
+                                    # Process the ROIs using our improved deserialize function
+                                    processed_rois = deserialize_polygons(instrument_config['rois'])
+
+                                    # Store the processed ROIs in session state
+                                    st.session_state.instrument_rois = processed_rois
+                                except Exception as e:
+                                    print(f"Error processing ROIs: {str(e)}")
+                                    # Fallback to storing the original format which our custom overlay function can handle
+                                    st.session_state.instrument_rois = instrument_config['rois']
+
+                                st.session_state.roi_instrument_id = instrument_id
+                                st.session_state.roi_source = f"stations.yaml - {station_name}"
+
+                                # Get ROI names for display
+                                roi_names = list(instrument_config['rois'].keys())
+                                rois_found = True
+                                return True  # Successfully loaded ROIs
+
+        # If we get here, no ROIs were found
+        if not rois_found:
+            print(f"No ROI definitions found for instrument {instrument_id} in station {station_name}")
+            return False
+    else:
+        print("Scan information not available. Please scan for images first.")
+        return False
+
+
 def main():
     # Set page configuration with better defaults
     st.set_page_config(
@@ -313,13 +390,17 @@ def main():
                             st.session_state.selected_year not in years):
                             st.session_state.selected_year = years[0]
                         
-                        # Year selector
-                        selected_year = st.selectbox(
-                            "Select Year", 
-                            years,
-                            index=years.index(st.session_state.selected_year) if st.session_state.selected_year in years else 0,
-                            help="Choose a year to view"
-                        )
+                        # Create a container with two columns for year and month selectors
+                        year_month_cols = st.columns(2)
+
+                        # Year selector in the left column
+                        with year_month_cols[0]:
+                            selected_year = st.selectbox(
+                                "Select Year",
+                                years,
+                                index=years.index(st.session_state.selected_year) if st.session_state.selected_year in years else 0,
+                                help="Choose a year to view"
+                            )
                         
                         # Update session state if changed
                         if selected_year != st.session_state.selected_year:
@@ -373,21 +454,16 @@ def main():
                                 # This takes different arguments (year, image_data) than the directory scanner version
                                 st.session_state.selected_month = get_month_with_most_images(selected_year, image_data)
 
-                        # Create a container for month and day selectors
-                        with st.container():
-                            # Create two columns for month and day selectors
-                            month_col, day_col = st.columns(2)
-                            
-                            with month_col:
-                                # Month selector
-                                month_names = [datetime.date(2000, m, 1).strftime('%B') for m in range(1, 13)]
-                                selected_month_idx = st.selectbox(
-                                    "Select Month",
-                                    range(1, 13),
-                                    format_func=lambda m: month_names[m-1],
-                                    index=st.session_state.selected_month-1,
-                                    help="Choose a month to view in the calendar"
-                                )
+                        # Month selector in the right column
+                        with year_month_cols[1]:
+                            month_names = [datetime.date(2000, m, 1).strftime('%B') for m in range(1, 13)]
+                            selected_month_idx = st.selectbox(
+                                "Select Month",
+                                range(1, 13),
+                                format_func=lambda m: month_names[m-1],
+                                index=st.session_state.selected_month-1,
+                                help="Choose a month to view in the calendar"
+                            )
 
                                 # Update month if changed
                                 if selected_month_idx != st.session_state.selected_month:
@@ -428,197 +504,8 @@ def main():
                                     # Rerun to update the UI
                                     st.rerun()
 
-                            # Create a three-column layout for buttons
-                            button_col1, button_col2, button_col3 = st.columns(3)
-
-                            with button_col1:
-                                # Add space to align with selectbox
-                                st.write("&nbsp;")
-                                # Add button to load instrument ROIs from configuration
-                                if st.button("🔍 Load Instrument ROIs", key="load_instrument_rois_button",
-                                          help="Load ROI definitions for this instrument from stations configuration"):
-                                    # Get the station and instrument data
-                                    if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
-                                        scan_info = st.session_state.scan_info
-                                        station_name = scan_info['station_name']
-                                        instrument_id = scan_info['instrument_id']
-
-                                        # Load configuration
-                                        config = load_config_files()
-                                        stations_config = config.get('stations', {}).get('stations', {})
-
-                                        # Extract ROIs for this instrument
-                                        rois_found = False
-
-                                        # Add detailed debug output
-                                        print(f"DEBUGGING ROI LOOKUP:")
-                                        print(f"1. Looking for normalized station name: '{station_name}'")
-                                        print(f"2. Available stations in config: {list(stations_config.keys())}")
-                                        print(f"3. Instrument ID to find: '{instrument_id}'")
-
-                                        # Find the station in the configuration by normalized name
-                                        # The station_name in scan_info should already be the normalized name
-                                        if station_name in stations_config:
-                                            station_data = stations_config[station_name]
-                                            print(f"4. Found station '{station_name}' in config")
-
-                                            # Add more debugging for station data structure
-                                            print(f"5. Station data keys: {list(station_data.keys())}")
-
-                                            # Check if phenocams exists
-                                            if 'phenocams' not in station_data:
-                                                print(f"ERROR: 'phenocams' key missing in station data")
-                                                st.error(f"Configuration error: 'phenocams' key missing for station {station_name}")
-                                            elif 'platforms' not in station_data['phenocams']:
-                                                print(f"ERROR: 'platforms' key missing in phenocams data")
-                                                st.error(f"Configuration error: 'platforms' key missing for station {station_name}")
-                                            else:
-                                                # List available platforms
-                                                platforms = station_data['phenocams']['platforms']
-                                                print(f"6. Available platforms: {list(platforms.keys())}")
-
-                                                # Check each platform for the instrument
-                                                for platform_type, platform_data in platforms.items():
-                                                    print(f"7. Checking platform: {platform_type}")
-
-                                                    if 'instruments' not in platform_data:
-                                                        print(f"   - No instruments in platform {platform_type}")
-                                                        continue
-
-                                                    # List instruments in this platform
-                                                    instruments = platform_data['instruments']
-                                                    print(f"8. Instruments in platform {platform_type}: {list(instruments.keys())}")
-
-                                                    if instrument_id in instruments:
-                                                        print(f"9. Found instrument {instrument_id} in platform {platform_type}")
-                                                        instrument_config = instruments[instrument_id]
-
-                                                        # Check if the instrument has ROIs
-                                                        print(f"10. Instrument keys: {list(instrument_config.keys())}")
-
-                                                        if 'rois' in instrument_config:
-                                                            rois = instrument_config['rois']
-                                                            if rois:
-                                                                print(f"11. Found ROIs: {list(rois.keys())}")
-                                                            else:
-                                                                print(f"11. 'rois' exists but is empty")
-
-                                                            # Check if it has ROIs defined
-                                                            if rois:
-                                                                # Store the ROIs in session state with metadata
-                                                                # Enhanced debugging of the ROI structure
-                                                                print("\n===== DETAILED ROI STRUCTURE ANALYSIS =====")
-                                                                print(f"Raw ROIs from config: {instrument_config['rois']}")
-
-                                                                # Analyze the structure of the first ROI as a sample
-                                                                if instrument_config['rois']:
-                                                                    first_roi_name = next(iter(instrument_config['rois']))
-                                                                    first_roi = instrument_config['rois'][first_roi_name]
-                                                                    print(f"\nFirst ROI name: {first_roi_name}")
-                                                                    print(f"First ROI value: {first_roi}")
-                                                                    print(f"First ROI type: {type(first_roi)}")
-                                                                    print(f"First ROI keys: {first_roi.keys() if isinstance(first_roi, dict) else 'Not a dictionary'}")
-
-                                                                    # Analyze points structure
-                                                                    if isinstance(first_roi, dict) and 'points' in first_roi:
-                                                                        points = first_roi['points']
-                                                                        print(f"\nPoints: {points}")
-                                                                        print(f"Points type: {type(points)}")
-                                                                        if points and len(points) > 0:
-                                                                            print(f"First point: {points[0]}")
-                                                                            print(f"First point type: {type(points[0])}")
-                                                                            if points[0] and len(points[0]) > 0:
-                                                                                print(f"First coordinate: {points[0][0]}")
-                                                                                print(f"First coordinate type: {type(points[0][0])}")
-
-                                                                    # Analyze color structure
-                                                                    if isinstance(first_roi, dict) and 'color' in first_roi:
-                                                                        color = first_roi['color']
-                                                                        print(f"\nColor: {color}")
-                                                                        print(f"Color type: {type(color)}")
-                                                                        if color and len(color) > 0:
-                                                                            print(f"First color component: {color[0]}")
-                                                                            print(f"First color component type: {type(color[0])}")
-
-                                                                # The ROIs in the YAML are in a YAML-friendly format (lists of lists)
-                                                                # We need to convert them to a format the ImageProcessor can use
-                                                                print("\n===== ATTEMPTING FORMAT CONVERSION =====")
-                                                                try:
-                                                                    # First, print debug info about ImageProcessor expectations
-                                                                    processor = ImageProcessor()
-
-                                                                    # Process the ROIs using our improved deserialize function
-                                                                    processed_rois = deserialize_polygons(instrument_config['rois'])
-                                                                    print(f"Processed ROIs structure (with tuples):")
-
-                                                                    # Analyze the converted structure
-                                                                    if processed_rois:
-                                                                        first_proc_roi_name = next(iter(processed_rois))
-                                                                        first_proc_roi = processed_rois[first_proc_roi_name]
-                                                                        print(f"\nFirst processed ROI name: {first_proc_roi_name}")
-                                                                        print(f"First processed ROI: {first_proc_roi}")
-                                                                        print(f"First processed ROI type: {type(first_proc_roi)}")
-                                                                        print(f"First processed ROI keys: {first_proc_roi.keys()}")
-
-                                                                        if isinstance(first_proc_roi, dict) and 'points' in first_proc_roi:
-                                                                            proc_points = first_proc_roi['points']
-                                                                            print(f"\nProcessed points: {proc_points[:2]}...")
-                                                                            print(f"Processed points type: {type(proc_points)}")
-                                                                            if proc_points and len(proc_points) > 0:
-                                                                                print(f"First processed point: {proc_points[0]}")
-                                                                                print(f"First processed point type: {type(proc_points[0])}")
-
-                                                                        if isinstance(first_proc_roi, dict) and 'color' in first_proc_roi:
-                                                                            print(f"\nProcessed color: {first_proc_roi['color']}")
-                                                                            print(f"Processed color type: {type(first_proc_roi['color'])}")
-
-                                                                    # Check if the structure matches what ImageProcessor expects
-                                                                    expected_structure = {
-                                                                        'points': 'list of tuples [(x1,y1), (x2,y2), ...]',
-                                                                        'color': 'tuple (B,G,R)',
-                                                                        'thickness': 'integer',
-                                                                        'alpha': 'float 0-1'
-                                                                    }
-                                                                    print(f"\nImageProcessor expected ROI structure: {expected_structure}")
-
-                                                                    # Store the processed ROIs in session state
-                                                                    st.session_state.instrument_rois = processed_rois
-                                                                    print("\nROIs processed successfully and stored in session state.")
-                                                                except Exception as e:
-                                                                    print(f"Error processing ROIs: {str(e)}")
-                                                                    st.warning(f"Error processing ROIs: {str(e)}. Using original format.")
-                                                                    # Fallback to storing the original format which our custom overlay function can handle
-                                                                    st.session_state.instrument_rois = instrument_config['rois']
-
-                                                                st.session_state.roi_instrument_id = instrument_id
-                                                                st.session_state.roi_source = f"stations.yaml - {station_name}"
-
-                                                                # Get ROI names for display
-                                                                roi_names = list(instrument_config['rois'].keys())
-                                                                print(f"12. Found ROIs: {roi_names}")
-
-                                                                # Show success message with details
-                                                                st.success(f"Loaded {len(roi_names)} ROI definitions for {instrument_id}: {', '.join(roi_names)}")
-                                                                rois_found = True
-                                                                break
-
-                                        if not rois_found:
-                                            st.warning(f"No ROI definitions found for instrument {instrument_id} in station {station_name}")
-                                            # Look for the instrument across all stations (in case it was moved)
-                                            for station_id, station_config in stations_config.items():
-                                                if 'phenocams' in station_config and 'platforms' in station_config['phenocams']:
-                                                    for platform_type, platform_data in station_config['phenocams']['platforms'].items():
-                                                        if 'instruments' in platform_data and instrument_id in platform_data['instruments']:
-                                                            instr_config = platform_data['instruments'][instrument_id]
-                                                            if 'rois' in instr_config and instr_config['rois']:
-                                                                st.info(f"Found ROIs for {instrument_id} in station {station_id}. Click 'Load Instrument ROIs' again to load them.")
-                                                                # Don't immediately load them - just inform the user
-                                    else:
-                                        st.warning("Scan information not available. Please scan for images first.")
-
-                            with button_col2:
-                                # Add a single comprehensive refresh button
-                                st.write("&nbsp;") # Add space to align with selectbox
+                            # Single button for refreshing data
+                            with st.container():
                                 if st.button("🔄 Refresh Data", key="refresh_data_button",
                                           help="Refresh all data for the current selection"):
                                     # Request a full refresh but in a non-destructive way
@@ -1517,18 +1404,27 @@ def main():
                                 filepath = None
 
                             if filepath:
+                                # Load and process the image
                                 # Add ROI toggle above the image with session state persistence
                                 if 'show_roi_overlays' not in st.session_state:
                                     st.session_state.show_roi_overlays = False
+                                
+                                # Simple toggle for ROI display
                                 show_rois = st.toggle("Show ROI Overlays", value=st.session_state.show_roi_overlays,
                                                     help="Toggle to show region of interest overlays on the image",
                                                     key="show_roi_toggle")
-
+                                
                                 # Update session state when toggle changes
                                 if show_rois != st.session_state.show_roi_overlays:
                                     st.session_state.show_roi_overlays = show_rois
 
-                                # Load and process the image
+                                    # If ROIs are enabled but haven't been loaded yet, load them automatically
+                                    if show_rois and ('instrument_rois' not in st.session_state or not st.session_state.instrument_rois):
+                                        # Try to load the instrument ROIs silently
+                                        if load_instrument_rois():
+                                            print("ROIs loaded automatically when toggle was turned on")
+                                        else:
+                                            print("No ROIs found for current instrument when toggle was turned on")
                                 processor = ImageProcessor()
                                 if processor.load_image(filepath):
                                     # Check if we have instrument ROIs loaded
@@ -1584,7 +1480,7 @@ def main():
                                                     try:
                                                         cv2.imread = lambda path: original_img if path == dummy_path else original_cv2_imread(path)
 
-                                                        # Apply ROIs with our custom function (now handles both formats)
+                                                        # Apply ROIs with our custom function using the default font scale of 2.0
                                                         img_with_rois = overlay_polygons(dummy_path, st.session_state.instrument_rois, show_names=True)
 
                                                         # Convert from RGB to BGR if needed (OpenCV uses BGR)
@@ -1606,21 +1502,12 @@ def main():
                                                     # Don't use default ROI to avoid confusion
                                                     st.warning("Unable to display instrument ROIs due to format incompatibility.")
 
-                                            # Add additional info in overlay mode with ROI details
-                                            roi_names = list(st.session_state.instrument_rois.keys())
-                                            roi_source = st.session_state.get('roi_source', 'configuration')
-                                            instrument_id = st.session_state.get('roi_instrument_id', 'unknown')
-
-                                            # Create a nicer formatted info message
-                                            st.info(
-                                                f"Showing {len(roi_names)} instrument-specific ROIs for {instrument_id} from {roi_source}:\n"
-                                                f"ROIs: {', '.join(roi_names)}"
-                                            )
+                                            # Information about ROIs is now provided directly in the image via labels
+                                            # We don't need to show an info message above the image
                                         else:
                                             # Now that we've fixed the format issues, re-enable default ROI generation
                                             processor.create_default_roi()
-                                            # Show informational message about default ROI
-                                            st.info("Using default ROI that covers the entire image (excluding sky). Click 'Load Instrument ROIs' to load predefined ROIs for this instrument.")
+                                            # No informational message required now that ROIs are labeled in the image
 
                                     # Store the image dimensions (for future ROI adjustments if needed)
                                     img = processor.get_image(with_overlays=False)  # Get the image without overlays first
@@ -1797,20 +1684,19 @@ def deserialize_polygons(yaml_friendly_rois):
     return original_rois
 
 
-def overlay_polygons(image_path, phenocam_rois: dict, show_names: bool = True, font_scale: float = 1.0):
+def overlay_polygons(image_path, phenocam_rois: dict, show_names: bool = True, font_scale: float = 2.0):
     """
     Overlays polygons on an image and optionally labels them with their respective ROI names.
-    This version handles both tuple and list formats for points and colors.
 
     Parameters:
         image_path (str): Path to the image file.
         phenocam_rois (dict): Dictionary where keys are ROI names and values are dictionaries representing polygons.
         Each dictionary should have the following keys:
-        - 'points' (list of tuple or list of list): List of (x, y) coordinates representing the vertices of the polygon.
-        - 'color' (tuple or list): (B, G, R) or [B, G, R] color of the polygon border.
+        - 'points' (list of tuple): List of (x, y) tuples representing the vertices of the polygon.
+        - 'color' (tuple): (B, G, R) color of the polygon border.
         - 'thickness' (int): Thickness of the polygon border.
         show_names (bool): Whether to display the ROI names on the image. Default is True.
-        font_scale (float): Scale factor for the font size of the ROI names. Default is 1.0.
+        font_scale (float): Scale factor for the font size of the ROI names. Default is 2.0.
 
     Returns:
         numpy.ndarray: The image with polygons overlaid, in RGB format.
@@ -1821,34 +1707,25 @@ def overlay_polygons(image_path, phenocam_rois: dict, show_names: bool = True, f
     if img is None:
         raise ValueError("Image not found or path is incorrect")
 
-    # Process each ROI
     for roi_name, roi_data in phenocam_rois.items():
         try:
-            # Extract points - support both formats (list of tuples or list of lists)
+            # Extract points from the polygon dictionary
             points = roi_data['points']
             # Convert to numpy array for OpenCV
             points_array = np.array(points, dtype=np.int32)
 
-            # Extract color - support both tuple and list formats
+            # Extract color - handle both RGB and BGR formats
             color = roi_data['color']
-            # BGR color order for OpenCV
+            # Convert RGB to BGR if needed (OpenCV uses BGR)
             if len(color) == 3:
-                # OpenCV uses BGR format, but our ROIs may be defined as RGB
-                # Check if we need to convert based on context
-                # For YAML configs, colors are typically defined as [R,G,B]
-                # So we need to reverse them for OpenCV's BGR
                 color = (color[2], color[1], color[0])  # Swap R and B
 
             # Extract thickness with default
             thickness = roi_data.get('thickness', 2)
 
-            # Draw the polygon on the image
+            # Draw the polygon outline on the image (no filling)
             cv2.polylines(img, [points_array], isClosed=True, color=color, thickness=thickness)
 
-            # No fill - just outlines
-            # Removed the fill code to only show outlines
-
-            # Add ROI name if requested
             if show_names:
                 # Calculate the centroid of the polygon for labeling
                 M = cv2.moments(points_array)
@@ -1859,15 +1736,18 @@ def overlay_polygons(image_path, phenocam_rois: dict, show_names: bool = True, f
                     # In case of a degenerate polygon where area is zero
                     cX, cY = points_array[0][0], points_array[0][1]
 
-                # Adjust text color for visibility - use white if color is dark
-                text_color = color
-                brightness = sum(color) / 3
-                if brightness < 128:  # If average color value is dark
-                    text_color = (255, 255, 255)  # Use white text
+                # Get text size for centering
+                text = roi_name
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                text_thickness = 2  # Appropriate thickness for a font scale of 2.0
+                (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, text_thickness)
 
-                # Overlay the ROI name at the centroid of the polygon
-                cv2.putText(img, roi_name, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX,
-                            font_scale, text_color, 2, cv2.LINE_AA)
+                # Adjust position to center text on centroid
+                text_x = cX - (text_width // 2)
+                text_y = cY + (text_height // 2)
+
+                # Draw text with same color as polygon
+                cv2.putText(img, text, (text_x, text_y), font, font_scale, color, text_thickness, cv2.LINE_AA)
 
         except Exception as e:
             print(f"Error processing ROI '{roi_name}': {str(e)}")
