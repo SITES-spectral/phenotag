@@ -465,44 +465,44 @@ def main():
                                 help="Choose a month to view in the calendar"
                             )
 
-                                # Update month if changed
-                                if selected_month_idx != st.session_state.selected_month:
-                                    st.session_state.selected_month = selected_month_idx
-                                    # Reset selected days when month changes
-                                    st.session_state.selected_days = []
+                        # Update month if changed
+                        if selected_month_idx != st.session_state.selected_month:
+                            st.session_state.selected_month = selected_month_idx
+                            # Reset selected days when month changes
+                            st.session_state.selected_days = []
 
-                                    # Force a refresh of the calendar for the new month if using lazy loading
-                                    if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
-                                        # Get scan info
-                                        scan_info = st.session_state.scan_info
-                                        base_dir = scan_info['base_dir']
-                                        station_name = scan_info['station_name']
-                                        instrument_id = scan_info['instrument_id']
+                            # Force a refresh of the calendar for the new month if using lazy loading
+                            if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                # Get scan info
+                                scan_info = st.session_state.scan_info
+                                base_dir = scan_info['base_dir']
+                                station_name = scan_info['station_name']
+                                instrument_id = scan_info['instrument_id']
 
-                                        # Get all days for this year
-                                        all_days = get_days_in_year(
-                                            base_dir,
-                                            station_name,
-                                            instrument_id,
-                                            selected_year
-                                        )
+                                # Get all days for this year
+                                all_days = get_days_in_year(
+                                    base_dir,
+                                    station_name,
+                                    instrument_id,
+                                    selected_year
+                                )
 
-                                        # Filter to days in the selected month
-                                        available_days = get_days_in_month(
-                                            selected_year,
-                                            selected_month_idx,  # Use the newly selected month
-                                            all_days
-                                        )
+                                # Filter to days in the selected month
+                                available_days = get_days_in_month(
+                                    selected_year,
+                                    selected_month_idx,  # Use the newly selected month
+                                    all_days
+                                )
 
-                                        # Create placeholder data structure for the calendar
-                                        calendar_data = create_placeholder_data(selected_year, available_days)
+                                # Create placeholder data structure for the calendar
+                                calendar_data = create_placeholder_data(selected_year, available_days)
 
-                                        # Update the image_data with days for the new month
-                                        if key in st.session_state.image_data:
-                                            st.session_state.image_data[key] = calendar_data
+                                # Update the image_data with days for the new month
+                                if key in st.session_state.image_data:
+                                    st.session_state.image_data[key] = calendar_data
 
-                                    # Rerun to update the UI
-                                    st.rerun()
+                            # Rerun to update the UI
+                            st.rerun()
 
                             # Single button for refreshing data
                             with st.container():
@@ -1289,6 +1289,65 @@ def main():
                         # Add instructional text for users
                         st.info("👇 Select a time below to view the corresponding image")
 
+                        # Add ROI toggle at the top of the left column with session state persistence
+                        if 'show_roi_overlays' not in st.session_state:
+                            st.session_state.show_roi_overlays = False
+
+                        # Simple toggle for ROI display
+                        show_rois = st.toggle("Show ROI Overlays", value=st.session_state.show_roi_overlays,
+                                            help="Toggle to show region of interest overlays on the image",
+                                            key="show_roi_toggle")
+
+                        # Update session state when toggle changes
+                        if show_rois != st.session_state.show_roi_overlays:
+                            st.session_state.show_roi_overlays = show_rois
+
+                            # If ROIs are enabled but haven't been loaded yet, load them automatically
+                            if show_rois and ('instrument_rois' not in st.session_state or not st.session_state.instrument_rois):
+                                # Try to load the instrument ROIs silently
+                                if load_instrument_rois():
+                                    print("ROIs loaded automatically when toggle was turned on")
+                                else:
+                                    print("No ROIs found for current instrument when toggle was turned on")
+
+                            # Force a rerun to update the UI
+                            st.rerun()
+
+                        # Display ROI legend if we have ROIs loaded AND the overlay toggle is on
+                        if 'instrument_rois' in st.session_state and st.session_state.instrument_rois and st.session_state.get('show_roi_overlays', False):
+                            st.markdown("#### ROI Legend")
+                            # Create a simple table to display ROI names and colors
+                            legend_data = []
+                            for roi_name, roi_info in st.session_state.instrument_rois.items():
+                                # Get color in RGB format for display
+                                if 'color' in roi_info:
+                                    color = roi_info['color']
+                                    # Convert to hex for CSS styling
+                                    if isinstance(color, tuple) and len(color) >= 3:
+                                        # OpenCV uses BGR, convert to RGB for hex display
+                                        hex_color = f"#{color[2]:02x}{color[1]:02x}{color[0]:02x}"
+                                        legend_data.append({
+                                            "ROI": roi_name,
+                                            "Color": f'<div style="background-color: {hex_color}; width: 20px; height: 20px; border-radius: 3px;"></div>'
+                                        })
+
+                            # Display the legend if we have data
+                            if legend_data:
+                                # Convert to DataFrame for display
+                                legend_df = pd.DataFrame(legend_data)
+                                # Use st.markdown with HTML for better styling
+                                for _, row in legend_df.iterrows():
+                                    st.markdown(
+                                        f'<div style="display: flex; align-items: center; margin-bottom: 5px;">'
+                                        f'<div style="margin-right: 10px;">{row["Color"]}</div>'
+                                        f'<div>{row["ROI"]}</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True
+                                    )
+
+                                # Add spacing after the legend
+                                st.write("")
+
                         # Create a DataFrame with filenames, paths, and timestamps
                         filenames = [os.path.basename(path) for path in daily_filepaths]
 
@@ -1388,6 +1447,7 @@ def main():
 
                     # Display the selected image in the main column
                     with main_col:
+                        # Create event handler for image selection
                         if event and event.selection.rows:
                             try:
                                 # Convert to integer index (it might be a string from the dataframe)
@@ -1405,26 +1465,6 @@ def main():
 
                             if filepath:
                                 # Load and process the image
-                                # Add ROI toggle above the image with session state persistence
-                                if 'show_roi_overlays' not in st.session_state:
-                                    st.session_state.show_roi_overlays = False
-                                
-                                # Simple toggle for ROI display
-                                show_rois = st.toggle("Show ROI Overlays", value=st.session_state.show_roi_overlays,
-                                                    help="Toggle to show region of interest overlays on the image",
-                                                    key="show_roi_toggle")
-                                
-                                # Update session state when toggle changes
-                                if show_rois != st.session_state.show_roi_overlays:
-                                    st.session_state.show_roi_overlays = show_rois
-
-                                    # If ROIs are enabled but haven't been loaded yet, load them automatically
-                                    if show_rois and ('instrument_rois' not in st.session_state or not st.session_state.instrument_rois):
-                                        # Try to load the instrument ROIs silently
-                                        if load_instrument_rois():
-                                            print("ROIs loaded automatically when toggle was turned on")
-                                        else:
-                                            print("No ROIs found for current instrument when toggle was turned on")
                                 processor = ImageProcessor()
                                 if processor.load_image(filepath):
                                     # Check if we have instrument ROIs loaded
