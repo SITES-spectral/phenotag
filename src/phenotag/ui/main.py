@@ -1624,6 +1624,78 @@ def main():
                 if 'image_annotations' not in st.session_state:
                     st.session_state.image_annotations = {}
 
+                    # Try to load existing YAML annotations for the current day
+                    if 'selected_day' in st.session_state and st.session_state.selected_day:
+                        try:
+                            # Construct the path to the annotations file for this day
+                            selected_day = st.session_state.selected_day
+
+                            # For each image path in daily_filepaths, check if annotations file exists
+                            if daily_filepaths:
+                                img_dir = os.path.dirname(daily_filepaths[0])
+                                annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
+
+                                # If annotations file exists, load it
+                                if os.path.exists(annotations_file):
+                                    with open(annotations_file, 'r') as f:
+                                        import yaml
+                                        annotation_data = yaml.safe_load(f)
+
+                                        if 'annotations' in annotation_data:
+                                            # Convert the loaded annotations to our format
+                                            for img_name, img_annotations in annotation_data['annotations'].items():
+                                                # Find the full path for this filename
+                                                for filepath in daily_filepaths:
+                                                    if os.path.basename(filepath) == img_name:
+                                                        # Store annotations using full path as key
+                                                        st.session_state.image_annotations[filepath] = img_annotations
+                                                        break
+
+                                    # Show notification that annotations were loaded
+                                    st.toast(f"Loaded existing annotations for day {selected_day}", icon="✅")
+                        except Exception as e:
+                            print(f"Error loading annotations: {e}")
+                            # Just log the error, don't block the UI flow
+
+                # Check if day changed, and if so, load annotations for the new day
+                current_day = st.session_state.selected_day
+                if 'last_annotation_day' not in st.session_state or st.session_state.last_annotation_day != current_day:
+                    # Day changed, check for existing annotations
+                    try:
+                        if daily_filepaths:
+                            img_dir = os.path.dirname(daily_filepaths[0])
+                            annotations_file = os.path.join(img_dir, f"annotations_{current_day}.yaml")
+
+                            # If annotations file exists, load it
+                            if os.path.exists(annotations_file):
+                                with open(annotations_file, 'r') as f:
+                                    import yaml
+                                    annotation_data = yaml.safe_load(f)
+
+                                    # Clear existing annotations for files in this day
+                                    # (to avoid mixing with annotations from other days)
+                                    for filepath in daily_filepaths:
+                                        if filepath in st.session_state.image_annotations:
+                                            del st.session_state.image_annotations[filepath]
+
+                                    if 'annotations' in annotation_data:
+                                        # Convert the loaded annotations to our format
+                                        for img_name, img_annotations in annotation_data['annotations'].items():
+                                            # Find the full path for this filename
+                                            for filepath in daily_filepaths:
+                                                if os.path.basename(filepath) == img_name:
+                                                    # Store annotations using full path as key
+                                                    st.session_state.image_annotations[filepath] = img_annotations
+                                                    break
+
+                                # Show notification that annotations were loaded
+                                st.toast(f"Loaded annotations for day {current_day}", icon="✅")
+                    except Exception as e:
+                        print(f"Error loading annotations for day change: {e}")
+
+                # Remember current day for next time
+                st.session_state.last_annotation_day = current_day
+
                 # Create a key for the current image path
                 image_key = current_filepath if current_filepath else "default"
 
@@ -1665,7 +1737,7 @@ def main():
                             disabled=True
                         ),
                         "discard": st.column_config.CheckboxColumn(
-                            "Discard ROI",
+                            "Discard",
                             help="Mark this ROI as not suitable for analysis",
                             width="small",
                         ),
@@ -1698,9 +1770,64 @@ def main():
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     if st.button("Save All Annotations", use_container_width=True):
-                        # Here you would save all annotations to a persistent storage
-                        # For example, to a JSON file or database
-                        st.success(f"Saved annotations for {len(st.session_state.image_annotations)} images!")
+                        # Organize annotations by day for better storage
+                        annotations_by_day = {}
+                        saved_count = 0
+
+                        try:
+                            # Group annotations by day (DOY)
+                            for img_path, annotations in st.session_state.image_annotations.items():
+                                if isinstance(img_path, str) and os.path.exists(img_path):
+                                    # Extract day of year from the filename or path
+                                    img_dir = os.path.dirname(img_path)
+                                    # The DOY is typically the directory name in the L1 structure
+                                    doy = os.path.basename(img_dir)
+
+                                    # Skip if we can't determine the DOY
+                                    if not doy.isdigit():
+                                        continue
+
+                                    # Initialize dict for this DOY if not exists
+                                    if doy not in annotations_by_day:
+                                        annotations_by_day[doy] = {}
+
+                                    # Store annotations for this image
+                                    img_filename = os.path.basename(img_path)
+                                    annotations_by_day[doy][img_filename] = annotations
+                                    saved_count += 1
+
+                            # Save annotations by day
+                            for doy, day_annotations in annotations_by_day.items():
+                                if day_annotations:
+                                    # Determine the directory path - use the L1 directory of the first image in this day
+                                    for img_path in st.session_state.image_annotations:
+                                        if isinstance(img_path, str) and os.path.exists(img_path) and doy == os.path.basename(os.path.dirname(img_path)):
+                                            # L1 directory is the parent of the image file
+                                            l1_dir = os.path.dirname(img_path)
+
+                                            # Create annotations file for this day
+                                            annotations_file = os.path.join(l1_dir, f"annotations_{doy}.yaml")
+
+                                            # Save annotations to YAML file
+                                            annotations_data = {
+                                                "created": datetime.datetime.now().isoformat(),
+                                                "day_of_year": doy,
+                                                "station": st.session_state.selected_station,
+                                                "instrument": st.session_state.selected_instrument,
+                                                "annotations": day_annotations
+                                            }
+
+                                            # Save using the utility function
+                                            save_yaml(annotations_data, annotations_file)
+                                            print(f"Saved annotations to {annotations_file}")
+                                            break
+
+                            if saved_count > 0:
+                                st.success(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!")
+                            else:
+                                st.warning("No valid images to save annotations for.")
+                        except Exception as e:
+                            st.error(f"Error saving annotations: {str(e)}")
 
                 with col2:
                     if st.button("Reset Current", use_container_width=True):
