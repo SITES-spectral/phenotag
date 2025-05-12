@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import time
 import cv2
+import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
 
@@ -11,6 +12,7 @@ from typing import Dict, List, Any, Tuple, Optional
 from phenotag.config import load_config_files
 from phenotag.io_tools import find_phenocam_images, save_yaml, save_annotations, load_session_config
 from phenotag.processors.image_processor import ImageProcessor
+from phenotag.ui.calendar_component import create_calendar, get_month_with_most_images, format_day_range
 
 
 def get_phenocam_instruments(station_data):
@@ -112,6 +114,8 @@ def save_session_config():
         "selected_instrument": st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None,
         "selected_year": st.session_state.selected_year,
         "selected_day": st.session_state.selected_day,
+        "selected_days": st.session_state.selected_days if 'selected_days' in st.session_state else [],
+        "selected_month": st.session_state.selected_month if 'selected_month' in st.session_state else None,
         "last_saved": time.strftime("%Y-%m-%d %H:%M:%S")
     }
     
@@ -147,6 +151,10 @@ def main():
         st.session_state.selected_year = session_config.get('selected_year')
     if 'selected_day' not in st.session_state:
         st.session_state.selected_day = session_config.get('selected_day')
+    if 'selected_days' not in st.session_state:
+        st.session_state.selected_days = []
+    if 'selected_month' not in st.session_state:
+        st.session_state.selected_month = None
     if 'image_data' not in st.session_state:
         st.session_state.image_data = {}
         
@@ -252,10 +260,51 @@ def main():
                             # Reset day selection when year changes
                             if 'selected_day' in st.session_state:
                                 st.session_state.selected_day = None
+                            # Reset month selection
+                            st.session_state.selected_month = None
+                            # Reset selected days
+                            st.session_state.selected_days = []
                             # Auto-save when selection changes
                             save_session_config()
                             # Trigger a rerun to update the UI
                             st.rerun()
+
+                        # Get the month with most images to display in calendar if not set
+                        if st.session_state.selected_month is None:
+                            st.session_state.selected_month = get_month_with_most_images(selected_year, image_data)
+
+                        # Month selector (moved above calendar)
+                        month_names = [datetime.date(2000, m, 1).strftime('%B') for m in range(1, 13)]
+                        selected_month_idx = st.selectbox(
+                            "Select Month",
+                            range(1, 13),
+                            format_func=lambda m: month_names[m-1],
+                            index=st.session_state.selected_month-1,
+                            help="Choose a month to view in the calendar"
+                        )
+
+                        # Update month if changed
+                        if selected_month_idx != st.session_state.selected_month:
+                            st.session_state.selected_month = selected_month_idx
+                            # Reset selected days when month changes
+                            st.session_state.selected_days = []
+                            st.rerun()
+
+                        # Add calendar view below month selection
+                        with st.expander("📅 Calendar View (Select Days)", expanded=True):
+                            selected_days, selected_week = create_calendar(
+                                int(selected_year),
+                                st.session_state.selected_month,
+                                image_data
+                            )
+
+                        # Store selected days
+                        if selected_days:
+                            st.session_state.selected_days = selected_days
+                            # Select the first day as current day if no day is selected
+                            if not st.session_state.selected_day or st.session_state.selected_day not in selected_days:
+                                st.session_state.selected_day = str(selected_days[0])
+                                save_session_config()
             else:
                 st.warning("No phenocams available for this station")
                 selected_instrument = None
@@ -296,11 +345,14 @@ def main():
             with col2:
                 if st.button("🔄 Reset Session", use_container_width=True):
                     # Clear session state without using status container
-                    for key in ['data_directory', 'selected_station', 'selected_instrument', 
-                                'selected_year', 'selected_day', 'image_data', 'ready_notified']:
+                    for key in ['data_directory', 'selected_station', 'selected_instrument',
+                                'selected_year', 'selected_day', 'selected_days', 'selected_month',
+                                'image_data', 'ready_notified']:
                         if key in st.session_state:
                             if key == 'image_data':
                                 st.session_state[key] = {}
+                            elif key == 'selected_days':
+                                st.session_state[key] = []
                             else:
                                 st.session_state[key] = None
                     
@@ -518,8 +570,27 @@ def main():
                 doys = list(image_data[selected_year].keys())
                 doys.sort(reverse=True)  # Sort days in descending order
 
-                # Handle case when no day is selected
-                if 'selected_day' not in st.session_state or not st.session_state.selected_day or st.session_state.selected_day not in doys:
+                # Get the selected days from calendar if available
+                if 'selected_days' in st.session_state and st.session_state.selected_days:
+                    selection_text = format_day_range(st.session_state.selected_days, int(selected_year))
+                    st.write(f"**Selected: {selection_text}**")
+
+                    # Build a list of day strings from selected days
+                    selected_doys = [str(day) for day in st.session_state.selected_days]
+
+                    # Filter to only include days that have data
+                    valid_selected_doys = [day for day in selected_doys if day in doys]
+
+                    if valid_selected_doys:
+                        # Used for UI display and filtering images
+                        selected_day = valid_selected_doys[0]  # Use first day for display
+                        st.session_state.selected_day = selected_day
+                    else:
+                        # Fallback if none of the selected days have data
+                        selected_day = doys[0] if doys else None
+                        st.session_state.selected_day = selected_day
+                # Handle case when no day is selected or no days from calendar
+                elif 'selected_day' not in st.session_state or not st.session_state.selected_day or st.session_state.selected_day not in doys:
                     selected_day = doys[0] if doys else None
                     st.session_state.selected_day = selected_day
                 else:
@@ -527,22 +598,41 @@ def main():
 
                 # Create the day selector only if we have days
                 if doys:
-                    selected_day = st.selectbox("Select a day", doys, index=doys.index(selected_day) if selected_day in doys else 0)
+                    selected_day = st.selectbox(
+                        "Select a specific day",
+                        doys,
+                        index=doys.index(selected_day) if selected_day in doys else 0,
+                        help="Use this to select a specific day, or use the calendar to select multiple days"
+                    )
 
                     # Update the selected day in session state
                     if selected_day != st.session_state.selected_day:
                         st.session_state.selected_day = selected_day
+                        # Reset selected days if manually selecting a day
+                        st.session_state.selected_days = [int(selected_day)]
                         save_session_config()
                         st.rerun()
                 else:
                     st.warning(f"No days found for year {selected_year}")
                     selected_day = None
 
-                # Only get file paths if we have a selected day
-                if selected_day:
+                # Get file paths for all selected days
+                daily_filepaths = []
+
+                # If we have selected days from the calendar, use those
+                if 'selected_days' in st.session_state and st.session_state.selected_days:
+                    for doy in st.session_state.selected_days:
+                        doy_str = str(doy)
+                        if doy_str in image_data[selected_year]:
+                            daily_filepaths.extend([f for f in image_data[selected_year][doy_str]])
+                # Otherwise, just use the single selected day
+                elif selected_day:
                     daily_filepaths = [f for f in image_data[selected_year][selected_day]]
                 else:
                     daily_filepaths = []
+
+                # Sort filepaths by name
+                daily_filepaths.sort()
         
         with center_container:
             # Only display image data if we have both a year and a day selected
@@ -556,48 +646,58 @@ def main():
 
                 # Make sure we have file paths before attempting to display them
                 if daily_filepaths:
-                    # Add temporary text to visualize the columns
-                    with left_col:
-                        # Create a DataFrame with filenames (not full paths) for better display
-                        filenames = [os.path.basename(path) for path in daily_filepaths]
-                        df = pd.DataFrame(data={"Filename": filenames, "Path": daily_filepaths})
-                        event = st.dataframe(
-                            df,
-                            column_config={
-                                "Filename": st.column_config.TextColumn("File"),
-                                # Store path but don't show it as a column
-                                "Path": st.column_config.TextColumn("Path")
-                            },
-                            column_order=["Filename"],  # Only show filename column
-                            use_container_width=True,
-                            hide_index=True,
-                            on_select="rerun",
-                            selection_mode="single-row",
-                        )
+                    # Create a DataFrame with filenames and paths
+                    filenames = [os.path.basename(path) for path in daily_filepaths]
+                    df = pd.DataFrame(
+                        index=enumerate(daily_filepaths),
+                        data={"Filename": filenames}
+                    )
 
-                        # Also add a text description of how many images are available
+                    # Show the interactive dataframe with row selection
+                    event = st.dataframe(
+                        df,
+                        column_config={
+                            "Filename": st.column_config.TextColumn(
+                                "File",
+                                help="Click to select this file",
+                                width="medium"
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True,
+                        on_select="rerun",
+                        selection_mode="single-row"
+                    )
+
+                    # Also add a text description of how many images are available
+                    if 'selected_days' in st.session_state and st.session_state.selected_days:
+                        selection_text = format_day_range(st.session_state.selected_days, int(selected_year))
+                        st.write(f"{len(daily_filepaths)} images available for {selection_text}")
+                    else:
                         st.write(f"{len(daily_filepaths)} images available for day {selected_day}")
 
-                    if event and hasattr(event, 'selection') and event.selection.rows:
-                        # Get the selected index
-                        index = event.selection.rows[0]
-                        filepath = daily_filepaths[index]
+                    # Instructions for the user
+                    st.write("**Click on a row to view the image**")
 
-                        # Display the selected image
-                        with main_col:
+                    # Display the selected image
+                    with main_col:
+                        if event and event.selection.rows:
+                            index = event.selection.rows[0]
+                            filepath = daily_filepaths[index]
+                            
                             if filepath:
                                 processor = ImageProcessor()
-
                                 processor.load_image(filepath)
                                 img = processor.get_image()
                                 st.image(img, caption=os.path.basename(filepath), use_container_width=True)
-                    else:
-                        # If no image is selected, display a prompt to select one
-                        with main_col:
-                            st.info("👈 Select an image from the list to view it here")
+                        else:
+                            st.info("No image selected. Click on a row to view an image.")
                 else:
-                    # No files found for this day
-                    st.warning(f"No image files found for day {selected_day} in year {selected_year}")
+                    # No files found for the selected days
+                    if 'selected_days' in st.session_state and st.session_state.selected_days:
+                        st.warning(f"No image files found for the selected days in year {selected_year}")
+                    else:
+                        st.warning(f"No image files found for day {selected_day} in year {selected_year}")
             else:
                 # No year or day selected
                 st.info("Select a year and day to view images")
@@ -929,6 +1029,17 @@ def main():
                 else:
                     # This info will be displayed in the main layout in the future
                     pass
+
+
+def handle_file_selection(edited_df):
+    """Handle file selection from the data editor."""
+    if edited_df is not None:
+        # Get the current selection from the data editor
+        selected_rows = edited_df[edited_df['Filename'].notna()]
+        if not selected_rows.empty:
+            # Update the selected index in session state
+            st.session_state.selected_image_index = selected_rows.index[0]
+            st.rerun()
 
 
 if __name__ == "__main__":
