@@ -273,24 +273,38 @@ def main():
                         if st.session_state.selected_month is None:
                             st.session_state.selected_month = get_month_with_most_images(selected_year, image_data)
 
-                        # Month selector (moved above calendar)
-                        month_names = [datetime.date(2000, m, 1).strftime('%B') for m in range(1, 13)]
-                        selected_month_idx = st.selectbox(
-                            "Select Month",
-                            range(1, 13),
-                            format_func=lambda m: month_names[m-1],
-                            index=st.session_state.selected_month-1,
-                            help="Choose a month to view in the calendar"
-                        )
+                        # Create a container for month and day selectors
+                        with st.container():
+                            # Create two columns for month and day selectors
+                            month_col, day_col = st.columns(2)
+                            
+                            with month_col:
+                                # Month selector
+                                month_names = [datetime.date(2000, m, 1).strftime('%B') for m in range(1, 13)]
+                                selected_month_idx = st.selectbox(
+                                    "Select Month",
+                                    range(1, 13),
+                                    format_func=lambda m: month_names[m-1],
+                                    index=st.session_state.selected_month-1,
+                                    help="Choose a month to view in the calendar"
+                                )
 
-                        # Update month if changed
-                        if selected_month_idx != st.session_state.selected_month:
-                            st.session_state.selected_month = selected_month_idx
-                            # Reset selected days when month changes
-                            st.session_state.selected_days = []
-                            st.rerun()
+                                # Update month if changed
+                                if selected_month_idx != st.session_state.selected_month:
+                                    st.session_state.selected_month = selected_month_idx
+                                    # Reset selected days when month changes
+                                    st.session_state.selected_days = []
+                                    st.rerun()
 
-                        # Add calendar view below month selection
+                            with day_col:
+                                # Get days for the selected year and month
+                                year_data = image_data[selected_year]
+                                days = list(year_data.keys())
+                                days.sort(reverse=True)  # Sort days in descending order
+
+                                
+
+                        # Add calendar view below month and day selection
                         with st.expander("📅 Calendar View (Select Days)", expanded=True):
                             selected_days, selected_week = create_calendar(
                                 int(selected_year),
@@ -596,26 +610,6 @@ def main():
                 else:
                     selected_day = st.session_state.selected_day
 
-                # Create the day selector only if we have days
-                if doys:
-                    selected_day = st.selectbox(
-                        "Select a specific day",
-                        doys,
-                        index=doys.index(selected_day) if selected_day in doys else 0,
-                        help="Use this to select a specific day, or use the calendar to select multiple days"
-                    )
-
-                    # Update the selected day in session state
-                    if selected_day != st.session_state.selected_day:
-                        st.session_state.selected_day = selected_day
-                        # Reset selected days if manually selecting a day
-                        st.session_state.selected_days = [int(selected_day)]
-                        save_session_config()
-                        st.rerun()
-                else:
-                    st.warning(f"No days found for year {selected_year}")
-                    selected_day = None
-
                 # Get file paths for all selected days
                 daily_filepaths = []
 
@@ -646,40 +640,41 @@ def main():
 
                 # Make sure we have file paths before attempting to display them
                 if daily_filepaths:
-                    # Create a DataFrame with filenames and paths
-                    filenames = [os.path.basename(path) for path in daily_filepaths]
-                    df = pd.DataFrame(
-                        index=enumerate(daily_filepaths),
-                        data={"Filename": filenames}
-                    )
+                    with left_col:
+                        # Create a DataFrame with filenames and paths
+                        filenames = [os.path.basename(path) for path in daily_filepaths]
+                        df = pd.DataFrame(
+                            index=enumerate(daily_filepaths),
+                            data={"Filename": filenames}
+                        )
 
-                    # Show the interactive dataframe with row selection
-                    event = st.dataframe(
-                        df,
-                        column_config={
-                            "Filename": st.column_config.TextColumn(
-                                "File",
-                                help="Click to select this file",
-                                width="medium"
-                            )
-                        },
-                        use_container_width=True,
-                        hide_index=True,
-                        on_select="rerun",
-                        selection_mode="single-row"
-                    )
+                        # Show the interactive dataframe with row selection
+                        event = st.dataframe(
+                            df,
+                            column_config={
+                                "Filename": st.column_config.TextColumn(
+                                    "File",
+                                    help="Click to select this file",
+                                    width="medium"
+                                )
+                            },
+                            use_container_width=True,
+                            hide_index=True,
+                            on_select="rerun",
+                            selection_mode="single-row"
+                        )
 
-                    # Also add a text description of how many images are available
-                    if 'selected_days' in st.session_state and st.session_state.selected_days:
-                        selection_text = format_day_range(st.session_state.selected_days, int(selected_year))
-                        st.write(f"{len(daily_filepaths)} images available for {selection_text}")
-                    else:
-                        st.write(f"{len(daily_filepaths)} images available for day {selected_day}")
+                        # Also add a text description of how many images are available
+                        if 'selected_days' in st.session_state and st.session_state.selected_days:
+                            selection_text = format_day_range(st.session_state.selected_days, int(selected_year))
+                            st.write(f"{len(daily_filepaths)} images available for {selection_text}")
+                        else:
+                            st.write(f"{len(daily_filepaths)} images available for day {selected_day}")
 
-                    # Instructions for the user
-                    st.write("**Click on a row to view the image**")
+                        # Instructions for the user
+                        st.write("**Click on a row to view the image**")
 
-                    # Display the selected image
+                    # Display the selected image in the main column
                     with main_col:
                         if event and event.selection.rows:
                             index = event.selection.rows[0]
@@ -755,22 +750,6 @@ def main():
                     days = list(year_data.keys())
                     days.sort(reverse=True)
                     
-                    with col2:
-                        if days:
-                            # Default to the latest day if none selected
-                            if st.session_state.selected_day is None or st.session_state.selected_day not in days:
-                                st.session_state.selected_day = days[0]
-                            
-                            selected_day = st.selectbox(
-                                "Select Day", 
-                                days,
-                                index=days.index(st.session_state.selected_day)
-                            )
-                            
-                            # Auto-save if day selection changed
-                            if selected_day != st.session_state.selected_day:
-                                st.session_state.selected_day = selected_day
-                                save_session_config()
                     
                     # Display data for the selected day
                     if days:
