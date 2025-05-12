@@ -8,6 +8,7 @@ import datetime
 import calendar
 from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
+import numpy as np
 
 # Use absolute imports
 from phenotag.config import load_config_files
@@ -427,7 +428,195 @@ def main():
                                     # Rerun to update the UI
                                     st.rerun()
 
-                            with day_col:
+                            # Create a three-column layout for buttons
+                            button_col1, button_col2, button_col3 = st.columns(3)
+
+                            with button_col1:
+                                # Add space to align with selectbox
+                                st.write("&nbsp;")
+                                # Add button to load instrument ROIs from configuration
+                                if st.button("🔍 Load Instrument ROIs", key="load_instrument_rois_button",
+                                          help="Load ROI definitions for this instrument from stations configuration"):
+                                    # Get the station and instrument data
+                                    if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                        scan_info = st.session_state.scan_info
+                                        station_name = scan_info['station_name']
+                                        instrument_id = scan_info['instrument_id']
+
+                                        # Load configuration
+                                        config = load_config_files()
+                                        stations_config = config.get('stations', {}).get('stations', {})
+
+                                        # Extract ROIs for this instrument
+                                        rois_found = False
+
+                                        # Add detailed debug output
+                                        print(f"DEBUGGING ROI LOOKUP:")
+                                        print(f"1. Looking for normalized station name: '{station_name}'")
+                                        print(f"2. Available stations in config: {list(stations_config.keys())}")
+                                        print(f"3. Instrument ID to find: '{instrument_id}'")
+
+                                        # Find the station in the configuration by normalized name
+                                        # The station_name in scan_info should already be the normalized name
+                                        if station_name in stations_config:
+                                            station_data = stations_config[station_name]
+                                            print(f"4. Found station '{station_name}' in config")
+
+                                            # Add more debugging for station data structure
+                                            print(f"5. Station data keys: {list(station_data.keys())}")
+
+                                            # Check if phenocams exists
+                                            if 'phenocams' not in station_data:
+                                                print(f"ERROR: 'phenocams' key missing in station data")
+                                                st.error(f"Configuration error: 'phenocams' key missing for station {station_name}")
+                                            elif 'platforms' not in station_data['phenocams']:
+                                                print(f"ERROR: 'platforms' key missing in phenocams data")
+                                                st.error(f"Configuration error: 'platforms' key missing for station {station_name}")
+                                            else:
+                                                # List available platforms
+                                                platforms = station_data['phenocams']['platforms']
+                                                print(f"6. Available platforms: {list(platforms.keys())}")
+
+                                                # Check each platform for the instrument
+                                                for platform_type, platform_data in platforms.items():
+                                                    print(f"7. Checking platform: {platform_type}")
+
+                                                    if 'instruments' not in platform_data:
+                                                        print(f"   - No instruments in platform {platform_type}")
+                                                        continue
+
+                                                    # List instruments in this platform
+                                                    instruments = platform_data['instruments']
+                                                    print(f"8. Instruments in platform {platform_type}: {list(instruments.keys())}")
+
+                                                    if instrument_id in instruments:
+                                                        print(f"9. Found instrument {instrument_id} in platform {platform_type}")
+                                                        instrument_config = instruments[instrument_id]
+
+                                                        # Check if the instrument has ROIs
+                                                        print(f"10. Instrument keys: {list(instrument_config.keys())}")
+
+                                                        if 'rois' in instrument_config:
+                                                            rois = instrument_config['rois']
+                                                            if rois:
+                                                                print(f"11. Found ROIs: {list(rois.keys())}")
+                                                            else:
+                                                                print(f"11. 'rois' exists but is empty")
+
+                                                            # Check if it has ROIs defined
+                                                            if rois:
+                                                                # Store the ROIs in session state with metadata
+                                                                # Enhanced debugging of the ROI structure
+                                                                print("\n===== DETAILED ROI STRUCTURE ANALYSIS =====")
+                                                                print(f"Raw ROIs from config: {instrument_config['rois']}")
+
+                                                                # Analyze the structure of the first ROI as a sample
+                                                                if instrument_config['rois']:
+                                                                    first_roi_name = next(iter(instrument_config['rois']))
+                                                                    first_roi = instrument_config['rois'][first_roi_name]
+                                                                    print(f"\nFirst ROI name: {first_roi_name}")
+                                                                    print(f"First ROI value: {first_roi}")
+                                                                    print(f"First ROI type: {type(first_roi)}")
+                                                                    print(f"First ROI keys: {first_roi.keys() if isinstance(first_roi, dict) else 'Not a dictionary'}")
+
+                                                                    # Analyze points structure
+                                                                    if isinstance(first_roi, dict) and 'points' in first_roi:
+                                                                        points = first_roi['points']
+                                                                        print(f"\nPoints: {points}")
+                                                                        print(f"Points type: {type(points)}")
+                                                                        if points and len(points) > 0:
+                                                                            print(f"First point: {points[0]}")
+                                                                            print(f"First point type: {type(points[0])}")
+                                                                            if points[0] and len(points[0]) > 0:
+                                                                                print(f"First coordinate: {points[0][0]}")
+                                                                                print(f"First coordinate type: {type(points[0][0])}")
+
+                                                                    # Analyze color structure
+                                                                    if isinstance(first_roi, dict) and 'color' in first_roi:
+                                                                        color = first_roi['color']
+                                                                        print(f"\nColor: {color}")
+                                                                        print(f"Color type: {type(color)}")
+                                                                        if color and len(color) > 0:
+                                                                            print(f"First color component: {color[0]}")
+                                                                            print(f"First color component type: {type(color[0])}")
+
+                                                                # The ROIs in the YAML are in a YAML-friendly format (lists of lists)
+                                                                # We need to convert them to a format the ImageProcessor can use
+                                                                print("\n===== ATTEMPTING FORMAT CONVERSION =====")
+                                                                try:
+                                                                    # First, print debug info about ImageProcessor expectations
+                                                                    processor = ImageProcessor()
+
+                                                                    # Process the ROIs using our improved deserialize function
+                                                                    processed_rois = deserialize_polygons(instrument_config['rois'])
+                                                                    print(f"Processed ROIs structure (with tuples):")
+
+                                                                    # Analyze the converted structure
+                                                                    if processed_rois:
+                                                                        first_proc_roi_name = next(iter(processed_rois))
+                                                                        first_proc_roi = processed_rois[first_proc_roi_name]
+                                                                        print(f"\nFirst processed ROI name: {first_proc_roi_name}")
+                                                                        print(f"First processed ROI: {first_proc_roi}")
+                                                                        print(f"First processed ROI type: {type(first_proc_roi)}")
+                                                                        print(f"First processed ROI keys: {first_proc_roi.keys()}")
+
+                                                                        if isinstance(first_proc_roi, dict) and 'points' in first_proc_roi:
+                                                                            proc_points = first_proc_roi['points']
+                                                                            print(f"\nProcessed points: {proc_points[:2]}...")
+                                                                            print(f"Processed points type: {type(proc_points)}")
+                                                                            if proc_points and len(proc_points) > 0:
+                                                                                print(f"First processed point: {proc_points[0]}")
+                                                                                print(f"First processed point type: {type(proc_points[0])}")
+
+                                                                        if isinstance(first_proc_roi, dict) and 'color' in first_proc_roi:
+                                                                            print(f"\nProcessed color: {first_proc_roi['color']}")
+                                                                            print(f"Processed color type: {type(first_proc_roi['color'])}")
+
+                                                                    # Check if the structure matches what ImageProcessor expects
+                                                                    expected_structure = {
+                                                                        'points': 'list of tuples [(x1,y1), (x2,y2), ...]',
+                                                                        'color': 'tuple (B,G,R)',
+                                                                        'thickness': 'integer',
+                                                                        'alpha': 'float 0-1'
+                                                                    }
+                                                                    print(f"\nImageProcessor expected ROI structure: {expected_structure}")
+
+                                                                    # Store the processed ROIs in session state
+                                                                    st.session_state.instrument_rois = processed_rois
+                                                                    print("\nROIs processed successfully and stored in session state.")
+                                                                except Exception as e:
+                                                                    print(f"Error processing ROIs: {str(e)}")
+                                                                    st.warning(f"Error processing ROIs: {str(e)}. Using original format.")
+                                                                    # Fallback to storing the original format which our custom overlay function can handle
+                                                                    st.session_state.instrument_rois = instrument_config['rois']
+
+                                                                st.session_state.roi_instrument_id = instrument_id
+                                                                st.session_state.roi_source = f"stations.yaml - {station_name}"
+
+                                                                # Get ROI names for display
+                                                                roi_names = list(instrument_config['rois'].keys())
+                                                                print(f"12. Found ROIs: {roi_names}")
+
+                                                                # Show success message with details
+                                                                st.success(f"Loaded {len(roi_names)} ROI definitions for {instrument_id}: {', '.join(roi_names)}")
+                                                                rois_found = True
+                                                                break
+
+                                        if not rois_found:
+                                            st.warning(f"No ROI definitions found for instrument {instrument_id} in station {station_name}")
+                                            # Look for the instrument across all stations (in case it was moved)
+                                            for station_id, station_config in stations_config.items():
+                                                if 'phenocams' in station_config and 'platforms' in station_config['phenocams']:
+                                                    for platform_type, platform_data in station_config['phenocams']['platforms'].items():
+                                                        if 'instruments' in platform_data and instrument_id in platform_data['instruments']:
+                                                            instr_config = platform_data['instruments'][instrument_id]
+                                                            if 'rois' in instr_config and instr_config['rois']:
+                                                                st.info(f"Found ROIs for {instrument_id} in station {station_id}. Click 'Load Instrument ROIs' again to load them.")
+                                                                # Don't immediately load them - just inform the user
+                                    else:
+                                        st.warning("Scan information not available. Please scan for images first.")
+
+                            with button_col2:
                                 # Add a single comprehensive refresh button
                                 st.write("&nbsp;") # Add space to align with selectbox
                                 if st.button("🔄 Refresh Data", key="refresh_data_button",
@@ -1342,10 +1531,102 @@ def main():
                                 # Load and process the image
                                 processor = ImageProcessor()
                                 if processor.load_image(filepath):
-                                    # If ROI toggle is on, create a default ROI
-                                    # This is simpler than trying to parse existing ROI data which may not have polygon points
+                                    # Check if we have instrument ROIs loaded
                                     if show_rois:
-                                        processor.create_default_roi()
+                                        if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
+                                            # Use the instrument-specific ROIs from the stations configuration
+                                            # Debug the ROI structure
+                                            print(f"Applying ROIs: {list(st.session_state.instrument_rois.keys())}")
+
+                                            # Try the built-in ImageProcessor function first with our improved ROI format
+                                            try:
+                                                # Convert the ROIs from YAML format to ImageProcessor format if needed
+                                                # If deserialize_polygons was already called, this is already in the right format
+                                                roi_dict = st.session_state.instrument_rois
+
+                                                # Check if we need to deserialize (if it's in the raw YAML format)
+                                                if roi_dict and isinstance(next(iter(roi_dict.values())), dict):
+                                                    first_roi = next(iter(roi_dict.values()))
+                                                    if 'points' in first_roi and isinstance(first_roi['points'][0], list):
+                                                        # If points are still lists, convert to tuples
+                                                        print("ROIs in YAML format detected, performing conversion")
+                                                        roi_dict = deserialize_polygons(roi_dict)
+
+                                                # Apply ROIs using the built-in method
+                                                processor.overlay_polygons_from_dict(roi_dict, enable_overlay=True)
+                                                print("Successfully applied ROIs using built-in overlay_polygons_from_dict")
+
+                                                # Check if image has the overlays
+                                                img_with_overlay = processor.get_image(with_overlays=True)
+                                                if img_with_overlay is not None:
+                                                    print(f"Overlay applied - image shape: {img_with_overlay.shape}")
+                                                else:
+                                                    print("Warning: overlay image is None, falling back to custom method")
+                                                    raise ValueError("Overlay image not created")
+                                            except Exception as e:
+                                                print(f"Error applying ROIs with built-in method: {str(e)}")
+
+                                                # Fallback to using our improved custom overlay function
+                                                try:
+                                                    print("Using custom overlay_polygons function as fallback")
+
+                                                    # Get the original image (without overlays)
+                                                    original_img = processor.get_image(with_overlays=False)
+
+                                                    if original_img is None:
+                                                        raise ValueError("Could not get original image from processor")
+
+                                                    # Create a new image with our improved overlay function
+                                                    dummy_path = "dummy_path"
+
+                                                    # Mock the cv2.imread to return our already loaded image
+                                                    original_cv2_imread = cv2.imread
+                                                    try:
+                                                        cv2.imread = lambda path: original_img if path == dummy_path else original_cv2_imread(path)
+
+                                                        # Apply ROIs with our custom function (now handles both formats)
+                                                        img_with_rois = overlay_polygons(dummy_path, st.session_state.instrument_rois, show_names=True)
+
+                                                        # Convert from RGB to BGR if needed (OpenCV uses BGR)
+                                                        if img_with_rois is not None:
+                                                            # Our custom function already returns RGB, but processor expects BGR
+                                                            img_with_rois = cv2.cvtColor(img_with_rois, cv2.COLOR_RGB2BGR)
+
+                                                            # Replace the processor's image with our overlaid version
+                                                            processor.image = img_with_rois.copy()
+                                                            print("Successfully applied ROIs using custom overlay_polygons")
+                                                        else:
+                                                            raise ValueError("Custom overlay returned None")
+                                                    finally:
+                                                        # Restore the original cv2.imread function
+                                                        cv2.imread = original_cv2_imread
+                                                except Exception as inner_e:
+                                                    print(f"Error with custom overlay: {str(inner_e)}")
+                                                    st.error(f"All ROI display methods failed. Primary error: {str(e)}. Fallback error: {str(inner_e)}")
+                                                    # Don't use default ROI to avoid confusion
+                                                    st.warning("Unable to display instrument ROIs due to format incompatibility.")
+
+                                            # Add additional info in overlay mode with ROI details
+                                            roi_names = list(st.session_state.instrument_rois.keys())
+                                            roi_source = st.session_state.get('roi_source', 'configuration')
+                                            instrument_id = st.session_state.get('roi_instrument_id', 'unknown')
+
+                                            # Create a nicer formatted info message
+                                            st.info(
+                                                f"Showing {len(roi_names)} instrument-specific ROIs for {instrument_id} from {roi_source}:\n"
+                                                f"ROIs: {', '.join(roi_names)}"
+                                            )
+                                        else:
+                                            # Now that we've fixed the format issues, re-enable default ROI generation
+                                            processor.create_default_roi()
+                                            # Show informational message about default ROI
+                                            st.info("Using default ROI that covers the entire image (excluding sky). Click 'Load Instrument ROIs' to load predefined ROIs for this instrument.")
+
+                                    # Store the image dimensions (for future ROI adjustments if needed)
+                                    img = processor.get_image(with_overlays=False)  # Get the image without overlays first
+                                    if img is not None:
+                                        height, width = img.shape[:2]
+                                        st.session_state.image_dimensions = (width, height)
 
                                     # Get the image with or without overlays based on toggle
                                     img = processor.get_image(with_overlays=show_rois)
@@ -1383,6 +1664,73 @@ def main():
                 # Create an expander to show the raw data (useful for debugging)
                 with st.expander("Raw Data for Selected Year", expanded=False):
                     st.write(image_data.get(selected_year))
+
+            # Add station configuration visualization
+            st.divider()
+            st.subheader("Station Configuration")
+
+            # Button to load all station data from stations.yaml
+            if selected_station:
+                normalized_name = station_name_to_normalized.get(selected_station)
+                if normalized_name:
+                    # Load station button with feedback
+                    if st.button("📋 Load Full Station Configuration", key="load_station_config"):
+                        with st.spinner(f"Loading configuration for {selected_station}..."):
+                            try:
+                                # Get the full station configuration from stations.yaml
+                                config = load_config_files()
+                                stations_config = config.get('stations', {}).get('stations', {})
+
+                                if normalized_name in stations_config:
+                                    station_data = stations_config[normalized_name]
+
+                                    # Store in session state for display
+                                    st.session_state.station_config = station_data
+
+                                    # Success message
+                                    st.success(f"Loaded configuration for {selected_station}")
+                                else:
+                                    st.error(f"Station {normalized_name} not found in configuration")
+                            except Exception as e:
+                                st.error(f"Error loading station configuration: {e}")
+
+                    # Display the station configuration as JSON if available
+                    if hasattr(st.session_state, 'station_config'):
+                        with st.expander("Station Configuration Details", expanded=True):
+                            # Create tabs for different views
+                            tab1, tab2 = st.tabs(["Formatted View", "Raw JSON"])
+
+                            with tab1:
+                                # Show a more structured view with key information
+                                st.write("### Station Information")
+                                st.write(f"**Name:** {st.session_state.station_config.get('name')}")
+                                st.write(f"**Acronym:** {st.session_state.station_config.get('acronym')}")
+                                st.write(f"**Normalized Name:** {st.session_state.station_config.get('normalized_name')}")
+
+                                # Show available platforms
+                                if 'phenocams' in st.session_state.station_config and 'platforms' in st.session_state.station_config['phenocams']:
+                                    platforms = st.session_state.station_config['phenocams']['platforms']
+                                    st.write(f"### Available Platforms: {list(platforms.keys())}")
+
+                                    # Show instruments for each platform
+                                    for platform, platform_data in platforms.items():
+                                        if 'instruments' in platform_data:
+                                            instruments = platform_data['instruments']
+                                            st.write(f"#### Platform {platform} Instruments:")
+
+                                            for instrument_id, instrument_info in instruments.items():
+                                                st.write(f"- **{instrument_id}**")
+                                                # Show ROIs if available
+                                                if 'rois' in instrument_info:
+                                                    rois = list(instrument_info['rois'].keys())
+                                                    st.write(f"  - ROIs: {', '.join(rois)}")
+
+                            with tab2:
+                                # Show raw JSON
+                                st.json(st.session_state.station_config)
+            else:
+                st.info("Select a station to view its configuration")
+
         # Store important data in session state
     if selected_station:
         # Store station info in session state
@@ -1390,6 +1738,152 @@ def main():
         if selected_instrument:
             # Store instrument info in session state
             st.session_state.current_instrument = selected_instrument
+
+
+def serialize_polygons(phenocam_rois):
+    """
+    Converts a dictionary of polygons to be YAML-friendly by converting tuples to lists.
+
+    Parameters:
+        phenocam_rois (dict of dict): Dictionary where keys are ROI names and values are dictionaries representing polygons.
+
+    Returns:
+        yaml_friendly_rois (dict of dict): Dictionary with tuples converted to lists.
+    """
+    yaml_friendly_rois = {}
+    for roi, polygon in phenocam_rois.items():
+        yaml_friendly_polygon = {
+            'points': [list(point) for point in polygon['points']],
+            'color': list(polygon['color']),
+            'thickness': polygon['thickness']
+        }
+        yaml_friendly_rois[roi] = yaml_friendly_polygon
+    return yaml_friendly_rois
+
+
+def deserialize_polygons(yaml_friendly_rois):
+    """
+    Converts YAML-friendly polygons back to their original format with tuples.
+    Makes the ROI format compatible with ImageProcessor.overlay_polygons_from_dict.
+
+    Parameters:
+        yaml_friendly_rois (dict of dict): Dictionary where keys are ROI names and values are dictionaries representing polygons in YAML-friendly format.
+
+    Returns:
+        original_rois (dict of dict): Dictionary with points and color as tuples.
+    """
+    original_rois = {}
+    for roi_name, roi_data in yaml_friendly_rois.items():
+        # Convert points to tuples and ensure they're in the correct format
+        points = [tuple(point) for point in roi_data['points']]
+
+        # Convert color to tuple
+        color = tuple(roi_data['color'])
+
+        # Get thickness (default to 2 if not present)
+        thickness = roi_data.get('thickness', 2)
+
+        # Default alpha value if not present
+        alpha = roi_data.get('alpha', 0.3)
+
+        # Store in the format expected by overlay_polygons_from_dict
+        original_rois[roi_name] = {
+            'points': points,
+            'color': color,
+            'thickness': thickness,
+            'alpha': alpha
+        }
+
+    return original_rois
+
+
+def overlay_polygons(image_path, phenocam_rois: dict, show_names: bool = True, font_scale: float = 1.0):
+    """
+    Overlays polygons on an image and optionally labels them with their respective ROI names.
+    This version handles both tuple and list formats for points and colors.
+
+    Parameters:
+        image_path (str): Path to the image file.
+        phenocam_rois (dict): Dictionary where keys are ROI names and values are dictionaries representing polygons.
+        Each dictionary should have the following keys:
+        - 'points' (list of tuple or list of list): List of (x, y) coordinates representing the vertices of the polygon.
+        - 'color' (tuple or list): (B, G, R) or [B, G, R] color of the polygon border.
+        - 'thickness' (int): Thickness of the polygon border.
+        show_names (bool): Whether to display the ROI names on the image. Default is True.
+        font_scale (float): Scale factor for the font size of the ROI names. Default is 1.0.
+
+    Returns:
+        numpy.ndarray: The image with polygons overlaid, in RGB format.
+    """
+    # Read the image
+    img = cv2.imread(image_path)
+
+    if img is None:
+        raise ValueError("Image not found or path is incorrect")
+
+    # Process each ROI
+    for roi_name, roi_data in phenocam_rois.items():
+        try:
+            # Extract points - support both formats (list of tuples or list of lists)
+            points = roi_data['points']
+            # Convert to numpy array for OpenCV
+            points_array = np.array(points, dtype=np.int32)
+
+            # Extract color - support both tuple and list formats
+            color = roi_data['color']
+            # BGR color order for OpenCV
+            if len(color) == 3:
+                # OpenCV uses BGR format, but our ROIs may be defined as RGB
+                # Check if we need to convert based on context
+                # For YAML configs, colors are typically defined as [R,G,B]
+                # So we need to reverse them for OpenCV's BGR
+                color = (color[2], color[1], color[0])  # Swap R and B
+
+            # Extract thickness with default
+            thickness = roi_data.get('thickness', 2)
+
+            # Draw the polygon on the image
+            cv2.polylines(img, [points_array], isClosed=True, color=color, thickness=thickness)
+
+            # Optional fill with transparency
+            alpha = roi_data.get('alpha', 0.3)
+            if alpha > 0:
+                # Create a copy of the image for blending
+                overlay = img.copy()
+                # Fill the polygon
+                cv2.fillPoly(overlay, [points_array], color)
+                # Blend the images
+                cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+
+            # Add ROI name if requested
+            if show_names:
+                # Calculate the centroid of the polygon for labeling
+                M = cv2.moments(points_array)
+                if M['m00'] != 0:
+                    cX = int(M['m10'] / M['m00'])
+                    cY = int(M['m01'] / M['m00'])
+                else:
+                    # In case of a degenerate polygon where area is zero
+                    cX, cY = points_array[0][0], points_array[0][1]
+
+                # Adjust text color for visibility - use white if color is dark
+                text_color = color
+                brightness = sum(color) / 3
+                if brightness < 128:  # If average color value is dark
+                    text_color = (255, 255, 255)  # Use white text
+
+                # Overlay the ROI name at the centroid of the polygon
+                cv2.putText(img, roi_name, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX,
+                            font_scale, text_color, 2, cv2.LINE_AA)
+
+        except Exception as e:
+            print(f"Error processing ROI '{roi_name}': {str(e)}")
+            # Continue with other ROIs even if one fails
+
+    # Convert the image from BGR to RGB before returning
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    return img_rgb
 
 
 def handle_file_selection(edited_df):

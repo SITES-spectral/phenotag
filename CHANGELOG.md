@@ -12,9 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persistent annotation system that saves annotations to YAML files
 - New `save_annotations` and `load_annotations` functions in io_tools
 - Documentation of the annotation storage system (`docs/annotation_system.md`)
+- Comprehensive stations.yaml schema documentation (`docs/stations_yaml_schema.md`)
 - Enhanced debugging output for image counting in calendar view
 - Specific debugging for day 90 (March 31st) which had format mismatch issues
 - Added toggle for showing ROI overlays on images in the image viewer
+- Added "Load Instrument ROIs" button to use instrument-specific ROIs from stations.yaml configuration
+- Support for displaying multiple instrument-specific ROIs with proper coloring and naming
+- Advanced ROI lookup using normalized station names from configuration
+- Improved ROI information display showing details of loaded ROIs
+- Added instrument ROI discovery across all stations for moved instruments
+- Enhanced debugging for ROI loading with detailed step-by-step progress output
+- Added robust error handling for ROI application issues with fallback to default ROIs
+- Added format conversion between YAML-friendly ROI format and OpenCV-compatible format
+- Implemented a custom ROI overlay function as fallback for handling format issues
+- Fixed polygon point format conversion to ensure compatibility with OpenCV drawing functions
+- Improved ROI format conversion with enhanced compatibility between YAML and OpenCV formats
+- Added enhanced error handling with proper format validation for ROI display
+- Implemented better color handling in ROI display with improved text visibility
+- Fixed inconsistencies between stations.yaml ROI format and ImageProcessor requirements
+- Added support for both tuple and list format handling in ROI overlay
+- Added ROI transparency/alpha support with improved rendering
+- Created a robust format conversion utility for ROI representation
+- Added "Load Full Station Configuration" button to view complete station data from stations.yaml
+- New station configuration viewer with tabs for formatted and raw JSON views
+- Interactive structured display of stations, platforms, instruments, and available ROIs
 
 ### Changed
 - Further improved directory scanner to handle all day-of-year formats (padded, unpadded, and integer)
