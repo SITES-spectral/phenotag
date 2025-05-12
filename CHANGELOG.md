@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation of the annotation storage system (`docs/annotation_system.md`)
 - Enhanced debugging output for image counting in calendar view
 - Specific debugging for day 90 (March 31st) which had format mismatch issues
+- Added toggle for showing ROI overlays on images in the image viewer
 
 ### Changed
 - Further improved directory scanner to handle all day-of-year formats (padded, unpadded, and integer)

@@ -1328,13 +1328,41 @@ def main():
                                 filepath = None
 
                             if filepath:
+                                # Add ROI toggle above the image with session state persistence
+                                if 'show_roi_overlays' not in st.session_state:
+                                    st.session_state.show_roi_overlays = False
+                                show_rois = st.toggle("Show ROI Overlays", value=st.session_state.show_roi_overlays,
+                                                    help="Toggle to show region of interest overlays on the image",
+                                                    key="show_roi_toggle")
+
+                                # Update session state when toggle changes
+                                if show_rois != st.session_state.show_roi_overlays:
+                                    st.session_state.show_roi_overlays = show_rois
+
+                                # Load and process the image
                                 processor = ImageProcessor()
-                                processor.load_image(filepath)
-                                img = processor.get_image()
-                                if img is not None:
-                                    # Convert BGR to RGB for correct color display
-                                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                                    st.image(img_rgb, caption=os.path.basename(filepath), use_container_width=True)
+                                if processor.load_image(filepath):
+                                    # If ROI toggle is on, create a default ROI
+                                    # This is simpler than trying to parse existing ROI data which may not have polygon points
+                                    if show_rois:
+                                        processor.create_default_roi()
+
+                                    # Get the image with or without overlays based on toggle
+                                    img = processor.get_image(with_overlays=show_rois)
+
+                                    if img is not None:
+                                        # Convert BGR to RGB for correct color display
+                                        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+                                        # Add image caption with ROI status
+                                        caption = os.path.basename(filepath)
+                                        if show_rois:
+                                            caption += " (with ROI overlays)"
+
+                                        # Display the image
+                                        st.image(img_rgb, caption=caption, use_container_width=True)
+                                    else:
+                                        st.error(f"Failed to process image: {filepath}")
                                 else:
                                     st.error(f"Failed to load image: {filepath}")
                         else:
