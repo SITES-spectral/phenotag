@@ -12,6 +12,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persistent annotation system that saves annotations to YAML files
 - New `save_annotations` and `load_annotations` functions in io_tools
 - Documentation of the annotation storage system (`docs/annotation_system.md`)
+- Enhanced debugging output for image counting in calendar view
+- Specific debugging for day 90 (March 31st) which had format mismatch issues
+
+### Changed
+- Further improved directory scanner to handle all day-of-year formats (padded, unpadded, and integer)
+- Enhanced calendar component to be more resilient to different day-of-year formats
+- Added detailed debugging output for calendar image counting
+- Improved image counting algorithm to support all path format variations
+- Enhanced day format handling with triple-format checking (padded, unpadded, and integer)
+
+### Fixed
+- Fixed critical issue with calendar not showing correct image counts for certain days
+- Resolved inconsistencies between the calendar view and dataframe display
+- Enhanced robustness for day-of-year format handling to prevent missing images
+- Fixed specific issue with day 090 (March 31st) not showing proper image counts in calendar
+
+## [0.2.0] - 2025-05-12
+
+### Added
+- Memory-efficient directory scanning for phenocam images
+- Lazy loading for image data to reduce memory usage
+- Calendar view for date-based image navigation
+- Support for scanning by month
+- Consistent handling of day-of-year directories with and without leading zeros
+- Debug logging to help troubleshoot month filtering issues
+- Added auto-discovery of directories for better user experience
+- Automatic scanning for days when opening the calendar view
+
+### Fixed
+- Month filtering now correctly handles days with or without leading zeros
+- Directory paths now try both with and without leading zeros for better compatibility
+- Calendar now correctly shows images for the selected month
+- Improved UI feedback when switching between stations and instruments
+- Fixed scanning behavior to only load directories as needed
+- Made interface more resilient to different directory naming conventions
+- Added proper filtering of days by month in the calendar view
+- Fixed PyArrow conversion issue when displaying files in the dataframe
+- Fixed image count discrepancy in the calendar view
+- Fixed calendar not showing images due to day of year format mismatches (leading zeros)
+
+### Changed
+- Path handling in directory scanner to support different directory formats
+- Improved path construction to try multiple path formats
+- Added diagnostic logging to monitor day filtering operations
+- Enhanced UI to display only timestamps instead of full filenames
+- Added guidance for when no L1 data is found
+- Switched to a more memory-efficient approach for directory scanning
+- Improved "Scan for Images" to preserve existing data
+- Added a single "Refresh Data" button that safely refreshes years, months, and days
+- Made scanning operations non-destructive to prevent data loss
+- Improved data handling when changing months or years in the calendar
+- Added progress indicators throughout the application for better user feedback
+
+## [0.1.1] - 2025-05-10
 
 ### Changed
 - Renamed session configuration file to `sites_spectral_phenocams_session_config.yaml` for better descriptiveness
@@ -25,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced progress feedback during scanning with status updates
 - Replaced sidebar status display with toast notifications for better UX
 - Added contextual error and info messages for invalid configurations
-- Started UI refactoring with a new three-container layout (top, center, bottom) 
+- Started UI refactoring with a new three-container layout (top, center, bottom)
 - Implemented a 1:5:1 column ratio in the center container for better content organization
 - Removed all titles and subtitles from the main canvas for a cleaner interface
 - Added year selector to the sidebar for easier navigation through yearly data

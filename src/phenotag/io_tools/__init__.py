@@ -2,6 +2,9 @@
 
 """
 PhenoTag IO Tools module
+
+This module provides tools for file I/O operations, configuration loading/saving,
+and directory scanning functions for working with phenocam images.
 """
 
 from pathlib import Path
@@ -12,6 +15,26 @@ import os
 import cv2
 import numpy as np
 from collections import defaultdict
+
+# Import the directory scanner
+from .directory_scanner import (
+    get_available_years,
+    get_days_in_year,
+    get_days_by_month,
+    count_images_in_days,
+    get_month_info,
+    get_days_in_month,
+    get_date_from_doy,
+    get_month_with_most_images,
+    format_month_year,
+    create_placeholder_data
+)
+
+# Keep these imports for backwards compatibility
+from .lazy_scanner import lazy_find_phenocam_images, get_available_days_in_year
+
+from .defaults import get_default_quality_data, get_default_roi_data
+from .load_annotations import load_annotations
 
 
 def load_yaml(filepath: Union[str, Path]) -> dict:

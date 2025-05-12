@@ -5,7 +5,7 @@ import datetime
 import calendar
 from typing import Dict, List, Optional, Tuple, Union
 
-def generate_month_calendar(year: int, month: int, image_counts: Dict[int, int] = None) -> pd.DataFrame:
+def generate_month_calendar(year: int, month: int, image_counts: Dict[str, int] = None) -> pd.DataFrame:
     """
     Generate a calendar dataframe for the specified month with day of year and image counts.
     
@@ -50,13 +50,43 @@ def generate_month_calendar(year: int, month: int, image_counts: Dict[int, int] 
                 date = datetime.date(year, month, day)
                 doy = date.timetuple().tm_yday
                 
-                # Get image count for this day
-                img_count = image_counts.get(str(doy), 0) if image_counts else 0
+                # Format day of year with padding to match the format in the data
+                doy_padded = f"{doy:03d}"  # Format with leading zeros (e.g., 090)
+                doy_unpadded = str(doy)    # Format without leading zeros (e.g., 90)
+                doy_as_int = str(int(doy))  # Format as plain integer (e.g., 90)
+                
+                # Debug output for specific days (like day 90)
+                if doy in [90]:
+                    print(f"Calendar - Day {doy} search:")
+                    print(f"  - Checking formats: {doy_padded}, {doy_unpadded}, {doy_as_int}")
+                    if image_counts:
+                        print(f"  - Available keys in image_counts: {list(image_counts.keys())[:10]}")
+
+                # Try all formats to be more resilient
+                img_count = 0
+                if image_counts:
+                    # Check in order: padded, unpadded, int format
+                    if doy_padded in image_counts:
+                        img_count = image_counts[doy_padded]
+                        if doy in [90]:
+                            print(f"  - Found in padded format: {img_count} images")
+                    elif doy_unpadded in image_counts:
+                        img_count = image_counts[doy_unpadded]
+                        if doy in [90]:
+                            print(f"  - Found in unpadded format: {img_count} images")
+                    elif doy_as_int in image_counts:
+                        img_count = image_counts[doy_as_int]
+                        if doy in [90]:
+                            print(f"  - Found in int format: {img_count} images")
+                    else:
+                        if doy in [90]:
+                            print(f"  - Not found in any format")
                 
                 # Store metadata
                 day_metadata[(week_idx, day_idx)] = {
                     "day": day,
                     "doy": doy,
+                    "doy_padded": doy_padded,
                     "image_count": img_count
                 }
     
@@ -136,9 +166,39 @@ def create_calendar(year: int, month: int, image_data: Dict, on_select=None):
     """
     # Get image counts by day of year
     image_counts = {}
+    
     if str(year) in image_data:
+        # Debug output of raw data
+        print(f"Calendar image data for year {year}, month {month}:")
+        print(f"Available days in data: {list(image_data[str(year)].keys())[:10]}")
+
         for doy, files in image_data[str(year)].items():
-            image_counts[doy] = len(files)
+            # Support both full file data and placeholder metadata
+            if isinstance(files, dict) and "_placeholder" in files:
+                # For lazy loading, check if we have a stored image count
+                if "_image_count" in files:
+                    # Use the stored count
+                    img_count = files["_image_count"]
+                    image_counts[doy] = img_count
+                    print(f"Calendar: Found stored count for day {doy}: {img_count}")
+                else:
+                    # Default to 1 if no count is available
+                    image_counts[doy] = 1
+                    print(f"Calendar: Using default count for day {doy}: 1")
+            else:
+                # Normal case - count the actual files
+                img_count = len(files)
+                image_counts[doy] = img_count
+                print(f"Calendar: Counted {img_count} files for day {doy}")
+                
+        # Double-check if we have data for days in March (specifically around day 90)
+        month_3_days = [d for d in range(60, 92)]  # Days in March
+        for d in month_3_days:
+            d_padded = f"{d:03d}"
+            if d_padded in image_counts:
+                print(f"Calendar: Found day {d_padded} with {image_counts[d_padded]} images")
+            elif str(d) in image_counts:
+                print(f"Calendar: Found day {d} with {image_counts[str(d)]} images")
     
     # Generate calendar dataframe and metadata
     calendar_df, day_metadata = generate_month_calendar(year, month, image_counts)
@@ -267,15 +327,30 @@ def get_month_with_most_images(year: str, image_data: Dict) -> int:
     for doy, files in image_data[year].items():
         # Convert day of year to month
         try:
-            doy_int = int(doy)
+            # Handle different formats of day
+            if isinstance(doy, str):
+                doy_int = int(doy.lstrip('0') or '0')  # Handle '000' case
+            else:
+                doy_int = int(doy)
+                
             date = datetime.datetime(int(year), 1, 1) + datetime.timedelta(days=doy_int-1)
             month = date.month
             
             # Add image count to month total
             if month not in month_counts:
                 month_counts[month] = 0
-            month_counts[month] += len(files)
-        except (ValueError, TypeError):
+                
+            # Count images - handle both actual files and placeholder data
+            if isinstance(files, dict) and "_placeholder" in files:
+                # For placeholder data, use stored count if available
+                if "_image_count" in files:
+                    month_counts[month] += files["_image_count"]
+                else:
+                    month_counts[month] += 1  # Default to 1 if no count
+            else:
+                # Normal case - count actual files
+                month_counts[month] += len(files)
+        except (ValueError, TypeError, OverflowError):
             continue
     
     # Find month with most images

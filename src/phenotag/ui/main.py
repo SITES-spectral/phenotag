@@ -5,14 +5,28 @@ import numpy as np
 import time
 import cv2
 import datetime
+import calendar
 from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
 
 # Use absolute imports
 from phenotag.config import load_config_files
-from phenotag.io_tools import find_phenocam_images, save_yaml, save_annotations, load_session_config
+from phenotag.io_tools import (
+    find_phenocam_images, save_yaml, save_annotations, load_session_config,
+    # Directory scanner functions (new implementation)
+    get_available_years, get_days_in_year, get_days_in_month,
+    count_images_in_days, format_month_year, create_placeholder_data,
+    # Lazy loader function
+    lazy_find_phenocam_images,
+    # Importing get_available_days_in_year from lazy_scanner
+    get_available_days_in_year
+)
+# Import directory scanner's get_month_with_most_images with a renamed alias
+from phenotag.io_tools import get_month_with_most_images as find_best_month
 from phenotag.processors.image_processor import ImageProcessor
-from phenotag.ui.calendar_component import create_calendar, get_month_with_most_images, format_day_range
+from phenotag.ui.calendar_component import create_calendar, format_day_range
+# Import calendar's get_month_with_most_images for backward compatibility
+from phenotag.ui.calendar_component import get_month_with_most_images
 
 
 def get_phenocam_instruments(station_data):
@@ -194,11 +208,22 @@ def main():
             help="Choose a monitoring station from the list"
         )
         
+        # Check if station selection changed
+        station_changed = st.session_state.selected_station != selected_station
+
         # Reset notification flag if station selection changed
-        if st.session_state.selected_station != selected_station and hasattr(st.session_state, 'ready_notified'):
+        if station_changed and hasattr(st.session_state, 'ready_notified'):
             st.session_state.ready_notified = False
-            
+
+        # Store the old station for later check
+        old_station = st.session_state.selected_station
+
+        # Update the selected station
         st.session_state.selected_station = selected_station
+
+        # Clear selected instrument when station changes to force rescanning
+        if station_changed:
+            st.session_state.selected_instrument = None
         
         normalized_name = None
         selected_instrument = None
@@ -225,15 +250,56 @@ def main():
                     help="Choose a phenocam instrument from the selected station"
                 )
                 
+                # Check if instrument selection changed
+                instrument_changed = st.session_state.selected_instrument != selected_instrument
+
                 # Reset notification flag if instrument selection changed
-                if st.session_state.selected_instrument != selected_instrument and hasattr(st.session_state, 'ready_notified'):
+                if instrument_changed and hasattr(st.session_state, 'ready_notified'):
                     st.session_state.ready_notified = False
-                    
+
+                # Store the old instrument for later check
+                old_instrument = st.session_state.selected_instrument
+
                 st.session_state.selected_instrument = selected_instrument
+
+                # If the instrument changed, we need to check if we need to scan for this combination
+                if instrument_changed:
+                    # Get the key for this station+instrument combination
+                    key = f"{normalized_name}_{selected_instrument}"
+
+                    # If we don't have data for this combination or only have a no_l1_data marker, trigger a scan
+                    needs_scan = False
+                    if 'image_data' not in st.session_state or key not in st.session_state.image_data:
+                        needs_scan = True
+                    # Check if we only have the special no_l1_data marker and the user is trying again
+                    elif len(st.session_state.image_data[key]) == 1 and "_no_l1_data" in st.session_state.image_data[key]:
+                        # Remove the marker and trigger a new scan (allows user to try again after processing L1)
+                        st.session_state.image_data.pop(key, None)
+                        needs_scan = True
+
+                    if needs_scan:
+                        if st.session_state.data_directory and os.path.isdir(st.session_state.data_directory):
+                            st.session_state.scan_requested = True
+                            st.session_state.scan_station = normalized_name
+                            st.session_state.scan_instrument = selected_instrument
+                            st.session_state.auto_scan = True
+                            st.rerun()  # Rerun to trigger the scan
                 
                 # Add year selector if we have image data for this instrument
                 key = f"{normalized_name}_{selected_instrument}"
-                if 'image_data' in st.session_state and key in st.session_state.image_data:
+
+                # Check if we have the special no_l1_data flag
+                if ('image_data' in st.session_state and
+                    key in st.session_state.image_data and
+                    len(st.session_state.image_data[key]) == 1 and
+                    "_no_l1_data" in st.session_state.image_data[key]):
+                    # Show a reminder message about missing L1 data
+                    st.warning(f"No L1 data found for {selected_instrument}. Process L0 images to L1 before annotation.")
+                    st.info("Click 'Scan for Images' again after processing images to refresh.")
+
+                # Normal case - we have actual image data
+                elif ('image_data' in st.session_state and
+                      key in st.session_state.image_data):
                     # Get years from image data
                     image_data = st.session_state.image_data[key]
                     years = list(image_data.keys())
@@ -271,7 +337,40 @@ def main():
 
                         # Get the month with most images to display in calendar if not set
                         if st.session_state.selected_month is None:
-                            st.session_state.selected_month = get_month_with_most_images(selected_year, image_data)
+                            # Check if we're using lazy loading
+                            if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                # For lazy loading, we need to build month information from directory structure
+                                scan_info = st.session_state.scan_info
+                                base_dir = scan_info['base_dir']
+                                station_name = scan_info['station_name']
+                                instrument_id = scan_info['instrument_id']
+
+                                # Get days for this year
+                                # Find the month with most images
+                                best_month = find_best_month(
+                                    base_dir,
+                                    station_name,
+                                    instrument_id,
+                                    selected_year
+                                )
+
+                                # Get all available days for the year
+                                all_days = get_days_in_year(
+                                    base_dir,
+                                    station_name,
+                                    instrument_id,
+                                    selected_year
+                                )
+
+                                # Create placeholder data structure
+                                calendar_data = create_placeholder_data(selected_year, all_days)
+
+                                # Use best month for selection
+                                st.session_state.selected_month = best_month
+                            else:
+                                # Use the full image data with the calendar component's function
+                                # This takes different arguments (year, image_data) than the directory scanner version
+                                st.session_state.selected_month = get_month_with_most_images(selected_year, image_data)
 
                         # Create a container for month and day selectors
                         with st.container():
@@ -294,23 +393,275 @@ def main():
                                     st.session_state.selected_month = selected_month_idx
                                     # Reset selected days when month changes
                                     st.session_state.selected_days = []
+
+                                    # Force a refresh of the calendar for the new month if using lazy loading
+                                    if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                        # Get scan info
+                                        scan_info = st.session_state.scan_info
+                                        base_dir = scan_info['base_dir']
+                                        station_name = scan_info['station_name']
+                                        instrument_id = scan_info['instrument_id']
+
+                                        # Get all days for this year
+                                        all_days = get_days_in_year(
+                                            base_dir,
+                                            station_name,
+                                            instrument_id,
+                                            selected_year
+                                        )
+
+                                        # Filter to days in the selected month
+                                        available_days = get_days_in_month(
+                                            selected_year,
+                                            selected_month_idx,  # Use the newly selected month
+                                            all_days
+                                        )
+
+                                        # Create placeholder data structure for the calendar
+                                        calendar_data = create_placeholder_data(selected_year, available_days)
+
+                                        # Update the image_data with days for the new month
+                                        if key in st.session_state.image_data:
+                                            st.session_state.image_data[key] = calendar_data
+
+                                    # Rerun to update the UI
                                     st.rerun()
 
                             with day_col:
+                                # Add a single comprehensive refresh button
+                                st.write("&nbsp;") # Add space to align with selectbox
+                                if st.button("🔄 Refresh Data", key="refresh_data_button",
+                                          help="Refresh all data for the current selection"):
+                                    # Request a full refresh but in a non-destructive way
+                                    if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                        scan_info = st.session_state.scan_info
+                                        station_name = scan_info['station_name']
+                                        instrument_id = scan_info['instrument_id']
+
+                                        # Set up a controlled refresh request
+                                        st.session_state.scan_requested = True
+                                        st.session_state.scan_station = station_name
+                                        st.session_state.scan_instrument = instrument_id
+                                        st.session_state.preserve_data = True  # Don't destroy existing data
+                                        st.session_state.refresh_mode = True  # Mark this as a refresh operation
+
+                                        # Clear all calendar scan cache keys to force refresh
+                                        for key in list(st.session_state.keys()):
+                                            if key.startswith('calendar_scanned_'):
+                                                st.session_state[key] = False
+
+                                        with st.spinner("Refreshing all data..."):
+                                            # Create a small progress bar for visual feedback
+                                            progress = st.progress(0)
+                                            for i in range(5):
+                                                progress.progress((i+1) * 20)
+                                                time.sleep(0.1)  # Much shorter delays with progress
+                                            st.success("Refresh complete!")
+                                        st.rerun()
+
                                 # Get days for the selected year and month
                                 year_data = image_data[selected_year]
                                 days = list(year_data.keys())
                                 days.sort(reverse=True)  # Sort days in descending order
 
+                                # Update the calendar image counts for lazy-loaded data
+                                if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                    scan_info = st.session_state.scan_info
+                                    base_dir = scan_info['base_dir']
+                                    station_name = scan_info['station_name']
+                                    instrument_id = scan_info['instrument_id']
+
+                                    # Update image counts for days with placeholder data
+                                    for day in days:
+                                        # Skip days that aren't in the data
+                                        if day not in year_data:
+                                            continue
+
+                                        # For placeholder data, count actual images
+                                        if isinstance(year_data[day], dict) and '_placeholder' in year_data[day]:
+                                            # Try all possible directory format variations
+                                            # 1. With leading zeros (e.g., 090)
+                                            day_with_zeros = day
+                                            # 2. Without leading zeros (e.g., 90)
+                                            day_without_zeros = day.lstrip('0') if day else '0'
+                                            # 3. As plain integer (e.g., 90)
+                                            day_as_int = str(int(day.lstrip('0') or '0'))
+
+                                            # First try with the original format
+                                            day_path = Path(base_dir) / station_name / "phenocams" / "products" / instrument_id / "L1" / selected_year / day_with_zeros
+
+                                            # If that doesn't exist, try without leading zeros
+                                            if not day_path.exists() or not day_path.is_dir():
+                                                day_path = Path(base_dir) / station_name / "phenocams" / "products" / instrument_id / "L1" / selected_year / day_without_zeros
+
+                                                # If that still doesn't exist, try as integer
+                                                if not day_path.exists() or not day_path.is_dir():
+                                                    day_path = Path(base_dir) / station_name / "phenocams" / "products" / instrument_id / "L1" / selected_year / day_as_int
+
+                                            # Count the images if directory exists
+                                            if day_path.exists() and day_path.is_dir():
+                                                # Count image files with detailed debug output
+                                                image_files = list(day_path.glob("*.jp*g"))
+                                                image_count = len([f for f in image_files if f.is_file()])
+
+                                                # Print debug info
+                                                print(f"Day {day} ({day_path.name}): Found {image_count} images in {day_path}")
+                                                if image_count > 0:
+                                                    print(f"  Sample images: {[f.name for f in image_files[:3]]}")
+
+                                                # Update the placeholder with the actual count
+                                                year_data[day]['_image_count'] = image_count
+
+                                                # Debug output for day 90 (common problem area)
+                                                if int(day.lstrip('0') or '0') == 90:
+                                                    print(f"DEBUG: Updated day 90 (represented as '{day}') with count {image_count}")
+
                                 
 
                         # Add calendar view below month and day selection
                         with st.expander("📅 Calendar View (Select Days)", expanded=True):
-                            selected_days, selected_week = create_calendar(
-                                int(selected_year),
-                                st.session_state.selected_month,
-                                image_data
-                            )
+                            # Key to track if we've already scanned for this month
+                            calendar_scan_key = f"calendar_scanned_{selected_year}_{st.session_state.selected_month}"
+
+                            # Determine if we need to scan based on:
+                            # 1. We haven't scanned this month/year yet
+                            # 2. User explicitly requested a refresh
+                            # 3. We changed months or years
+                            month_changed = st.session_state.get('last_month', None) != st.session_state.selected_month
+                            year_changed = st.session_state.get('last_year', None) != selected_year
+
+                            need_scan = (not st.session_state.get(calendar_scan_key, False) or
+                                        st.session_state.get('refresh_mode', False) or
+                                        month_changed or year_changed)
+
+                            # Update last month/year tracking
+                            st.session_state['last_month'] = st.session_state.selected_month
+                            st.session_state['last_year'] = selected_year
+
+                            # Reset the refresh flag after checking
+                            if st.session_state.get('refresh_mode', False):
+                                st.session_state.refresh_mode = False
+
+                            # Check if we need to scan days for this month
+                            if need_scan and hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                with st.spinner(f"Scanning for days in {calendar.month_name[st.session_state.selected_month]} {selected_year}..."):
+                                    # Add visual feedback with progress bar
+                                    calendar_progress = st.progress(0)
+
+                                    # We need to get day metadata for the calendar
+                                    scan_info = st.session_state.scan_info
+                                    base_dir = scan_info['base_dir']
+                                    station_name = scan_info['station_name']
+                                    instrument_id = scan_info['instrument_id']
+
+                                    # Update progress
+                                    calendar_progress.progress(20)
+
+                                    # Get all available days for the year
+                                    all_days = get_days_in_year(
+                                        base_dir,
+                                        station_name,
+                                        instrument_id,
+                                        selected_year
+                                    )
+
+                                    # Update progress
+                                    calendar_progress.progress(40)
+
+                                    # Log available days before filtering
+                                    print(f"Calendar - Available days before filtering: {all_days}")
+
+                                    # Update progress
+                                    calendar_progress.progress(60)
+
+                                    # Filter days to those in the selected month
+                                    month_filtered_days = get_days_in_month(
+                                        selected_year,
+                                        st.session_state.selected_month,
+                                        all_days
+                                    )
+
+                                    # Log available days after filtering
+                                    print(f"Calendar - Days in month {st.session_state.selected_month}: {month_filtered_days}")
+
+                                    available_days = month_filtered_days
+
+                                    # Update progress
+                                    calendar_progress.progress(70)
+
+                                    # Create placeholder data structure for the calendar
+                                    calendar_image_data = create_placeholder_data(selected_year, available_days)
+
+                                    # Store the data in session state
+                                    key = f"{station_name}_{instrument_id}"
+
+                                    # Initialize image_data structure if needed
+                                    if 'image_data' not in st.session_state:
+                                        st.session_state.image_data = {}
+
+                                    if key not in st.session_state.image_data:
+                                        st.session_state.image_data[key] = {}
+
+                                    # Update the image data with our placeholder for this year
+                                    if selected_year not in st.session_state.image_data[key]:
+                                        st.session_state.image_data[key][selected_year] = {}
+
+                                    # Update progress
+                                    calendar_progress.progress(85)
+
+                                    # Add days to the image data
+                                    for day in available_days:
+                                        st.session_state.image_data[key][selected_year][day] = {"_placeholder": True}
+
+                                    # Finish progress with animation
+                                    for i in range(85, 101, 5):
+                                        calendar_progress.progress(i)
+                                        time.sleep(0.02)
+
+                                    # Mark this month as scanned
+                                    st.session_state[calendar_scan_key] = True
+
+                                    # Provide feedback
+                                    if available_days:
+                                        st.success(f"Found {len(available_days)} days with images in {calendar.month_name[st.session_state.selected_month]} {selected_year}")
+                                    else:
+                                        st.info(f"No images found for {calendar.month_name[st.session_state.selected_month]} {selected_year}")
+
+                            # Check if we're using lazy loading and have data
+                            if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                                # Get the key for current station/instrument
+                                scan_info = st.session_state.scan_info
+                                station_name = scan_info['station_name']
+                                instrument_id = scan_info['instrument_id']
+                                key = f"{station_name}_{instrument_id}"
+
+                                # See if we have data for this year/month
+                                if ('image_data' in st.session_state and
+                                    key in st.session_state.image_data and
+                                    selected_year in st.session_state.image_data[key]):
+
+                                    # Create calendar with existing data
+                                    calendar_data = {selected_year: st.session_state.image_data[key][selected_year]}
+
+                                    # Use data for the calendar
+                                    selected_days, selected_week = create_calendar(
+                                        int(selected_year),
+                                        st.session_state.selected_month,
+                                        calendar_data
+                                    )
+                                else:
+                                    # No data yet - automatically trigger a scan by rerunning
+                                    st.info("No data available yet. Scanning for available days...")
+                                    st.session_state[calendar_scan_key] = False  # Reset the scan flag
+                                    time.sleep(0.5)  # Small delay for UI
+                                    st.rerun()
+                            else:
+                                # Use the full image data (original behavior)
+                                selected_days, selected_week = create_calendar(
+                                    int(selected_year),
+                                    st.session_state.selected_month,
+                                    image_data
+                                )
 
                         # Store selected days
                         if selected_days:
@@ -399,6 +750,8 @@ def main():
                     st.session_state.scan_requested = True
                     st.session_state.scan_instrument = selected_instrument
                     st.session_state.scan_station = normalized_name
+                    # Set a flag to indicate this is a non-destructive scan
+                    st.session_state.preserve_data = True
                     st.write("Starting scan...")
                     st.rerun()  # Rerun to start the scan in a clean state
             else:
@@ -416,19 +769,44 @@ def main():
     
     # Check if we need to auto-scan based on loaded configuration
     if (not hasattr(st.session_state, 'scan_requested') or not st.session_state.scan_requested) and \
-       'image_data' not in st.session_state and \
        st.session_state.data_directory and \
        st.session_state.selected_station and \
        st.session_state.selected_instrument and \
        os.path.isdir(st.session_state.data_directory):
-        # We have valid configuration but no image data - set up auto-scan
-        normalized_name = station_name_to_normalized.get(st.session_state.selected_station)
-        if normalized_name:
-            st.session_state.scan_requested = True
-            st.session_state.scan_station = normalized_name
-            st.session_state.scan_instrument = st.session_state.selected_instrument
-            st.session_state.auto_scan = True  # Flag to indicate this is an automatic scan
-            st.rerun()  # Rerun to trigger the scan in a clean state
+
+        # We'll scan if either we have no image data at all
+        should_scan = 'image_data' not in st.session_state
+
+        # Or if we haven't scanned this specific station+instrument combination yet
+        if not should_scan and 'image_data' in st.session_state:
+            normalized_name = station_name_to_normalized.get(st.session_state.selected_station)
+            key = f"{normalized_name}_{st.session_state.selected_instrument}"
+
+            # Need to scan if:
+            # 1. We don't have this key at all
+            # 2. We have this key but it only contains the "_no_l1_data" flag and user is explicitly requesting a scan
+            should_scan = key not in st.session_state.image_data
+
+            # Check if we need to clean up the special no_l1_data marker to allow rescanning
+            if not should_scan and key in st.session_state.image_data:
+                data = st.session_state.image_data[key]
+                # If the data only contains our verification flag and the user clicked "Scan"
+                if len(data) == 1 and "_no_l1_data" in data:
+                    # Remove the verification flag to allow a fresh scan
+                    # This is just clearing our internal tracking flag that we use
+                    # to avoid infinite auto-scanning loops - it's not marking any user task as complete
+                    st.session_state.image_data.pop(key, None)
+                    should_scan = True
+
+        if should_scan:
+            # We have valid configuration but need to scan - set up auto-scan
+            normalized_name = station_name_to_normalized.get(st.session_state.selected_station)
+            if normalized_name:
+                st.session_state.scan_requested = True
+                st.session_state.scan_station = normalized_name
+                st.session_state.scan_instrument = st.session_state.selected_instrument
+                st.session_state.auto_scan = True  # Flag to indicate this is an automatic scan
+                st.rerun()  # Rerun to trigger the scan in a clean state
     
     # Handle scanning request outside of expander
     if hasattr(st.session_state, 'scan_requested') and st.session_state.scan_requested:
@@ -457,24 +835,69 @@ def main():
             progress_bar.progress(25)
             
             try:
-                # Execute the search with progress updates
-                image_data = find_phenocam_images(
+                # First, get just the available years (very fast)
+                progress_bar.progress(25)
+                status_text.write("Finding available years...")
+
+                # Get years for this station/instrument (very fast, no image data loading)
+                years_data = lazy_find_phenocam_images(
                     base_dir=st.session_state.data_directory,
                     station_name=normalized_name,
                     instrument_id=selected_instrument
                 )
-                
-                # Update progress between steps
-                progress_bar.progress(50)
-                status_text.write("Processing image data...")
-                
-                # Small delay to show progress
-                time.sleep(0.5)
-                progress_bar.progress(75)
+
+                # Get the key for this station+instrument combo
+                station_instrument_key = f"{normalized_name}_{selected_instrument}"
+
+                # Initialize or preserve image data structure
+                if not years_data:
+                    # No years found - but preserve existing data structure
+                    if 'image_data' not in st.session_state:
+                        st.session_state.image_data = {}
+                    image_data = {}
+                else:
+                    # Initialize structure with years, preserving existing data if any
+                    if 'image_data' not in st.session_state:
+                        st.session_state.image_data = {}
+
+                    # If we already have data for this station/instrument, use it
+                    if station_instrument_key in st.session_state.image_data:
+                        image_data = st.session_state.image_data[station_instrument_key]
+                    else:
+                        image_data = {}
+
+                    # Add any new years discovered
+                    for year in years_data:
+                        if year not in image_data:
+                            # Only initialize years we don't already have
+                            image_data[year] = {}
+
+                    progress_bar.progress(50)
+                    status_text.write(f"Found {len(years_data)} years. Scanning metadata...")
+
+                    # Set up lazy loading information - we'll only load specific
+                    # data when it's actually requested by the UI
+                    scan_info = {
+                        "base_dir": st.session_state.data_directory,
+                        "station_name": normalized_name,
+                        "instrument_id": selected_instrument,
+                        "years": list(years_data.keys()),
+                        "lazy_loaded": True
+                    }
+
+                    # Store this scan info for later lazy loading
+                    st.session_state.scan_info = scan_info
+
+                # Progress updates
+                progress_bar.progress(80)
                 status_text.write("Finalizing...")
-                
-                # Small delay for visual feedback
-                time.sleep(0.5)
+
+                # Better visual feedback with animated progress
+                for i in range(80, 101, 5):
+                    progress_bar.progress(i)
+                    status_text.write(f"Finalizing scan... {i}%")
+                    time.sleep(0.05)  # Much shorter incremental delays
+
                 progress_bar.progress(100)
                 status_text.write("✅ Scan completed successfully!")
             except Exception as e:
@@ -485,10 +908,34 @@ def main():
                 image_data = {}
             
             if image_data:
-                # Store in session state for later use
-                if 'image_data' not in st.session_state:
-                    st.session_state.image_data = {}
-                st.session_state.image_data[f"{normalized_name}_{selected_instrument}"] = image_data
+                # Store in session state for later use - handle refresh mode specially
+                if st.session_state.get('refresh_mode', False):
+                    # Special handling for refresh mode - merge new data with existing
+                    if station_instrument_key in st.session_state.image_data:
+                        # Log refresh operation
+                        print(f"Refresh mode: Merging data for {station_instrument_key}")
+
+                        # Merge existing data with new discoveries
+                        existing_data = st.session_state.image_data[station_instrument_key]
+
+                        # Add any new years
+                        for year in image_data:
+                            if year not in existing_data:
+                                existing_data[year] = {}
+
+                            # For each year, merge days but don't replace existing day data
+                            for day in image_data[year]:
+                                if day not in existing_data[year]:
+                                    existing_data[year][day] = image_data[year][day]
+
+                        # Use the merged data
+                        st.session_state.image_data[station_instrument_key] = existing_data
+                    else:
+                        # No existing data, just use the new data
+                        st.session_state.image_data[station_instrument_key] = image_data
+                else:
+                    # Normal mode - replace with new data
+                    st.session_state.image_data[station_instrument_key] = image_data
                 
                 # Get the years from the image data first
                 years = list(image_data.keys())
@@ -515,25 +962,91 @@ def main():
                 else:
                     st.success(f"Found images for {selected_instrument}!")
                 
-                # Show metrics
-                total_days = sum(len(image_data[year]) for year in years)
-                total_images = sum(len(files) for year in years for files in image_data[year].values())
-                
-                metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
-                metrics_col1.metric("Years", len(years))
-                metrics_col2.metric("Days", total_days)
-                metrics_col3.metric("Images", total_images)
+                # Show metrics - handle lazy loading differently
+                if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                    # For lazy loading, we don't know total images yet, just show years
+                    years_count = len(years)
+
+                    # Get approximate day count from metadata
+                    days_count = 0
+                    sample_year = years[0] if years else None
+
+                    if sample_year:
+                        # Get station and instrument from scan info
+                        scan_info = st.session_state.scan_info
+                        base_dir = scan_info['base_dir']
+                        station_name = scan_info['station_name']
+                        instrument_id = scan_info['instrument_id']
+
+                        # Get available days for the sample year
+                        days = get_available_days_in_year(base_dir, station_name, instrument_id, sample_year)
+                        days_count = len(days)
+
+                    metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+                    metrics_col1.metric("Years", years_count)
+                    metrics_col2.metric("Days", f"~{days_count}" if sample_year else "Unknown")
+                    metrics_col3.metric("Images", "Lazy loaded")
+                else:
+                    # For regular loading, use the full count
+                    total_days = sum(len(image_data[year]) for year in years)
+                    total_images = sum(len(files) for year in years for files in image_data[year].values())
+
+                    metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+                    metrics_col1.metric("Years", len(years))
+                    metrics_col2.metric("Days", total_days)
+                    metrics_col3.metric("Images", total_images)
                 
                 # Show years
                 st.write(f"Years available: {', '.join(years[:3])}" + 
                          (f"... and {len(years) - 3} more" if len(years) > 3 else ""))
             else:
-                st.error(f"No images found for {selected_instrument}")
+                st.error(f"No L1 images found for {selected_instrument}")
+
+                # Create expandable section with guidance on how to process L0 to L1
+                with st.expander("How to generate L1 data for annotation", expanded=True):
+                    st.markdown(f"""
+                    ### No L1 data found
+
+                    Before you can annotate images with PhenoTag, you need to process your raw images
+                    to Level 1 (L1) products using the SITES Phenocams package.
+
+                    #### Steps to generate L1 data:
+
+                    1. **Check for L0 data**: Verify that you have raw (L0) images for this instrument
+
+                    2. **Process L0 to L1**: Use the phenocams CLI to process raw images:
+                    ```bash
+                    # Activate the phenocams environment
+                    source /path/to/phenocams/activate_env.sh
+
+                    # Process L0 images to L1 products
+                    phenocams l1 process --station {normalized_name} --instrument {selected_instrument}
+                    ```
+
+                    3. **Verify L1 generation**: After processing, make sure the L1 data is in the correct location:
+                    ```
+                    {st.session_state.data_directory}/{normalized_name}/phenocams/products/{selected_instrument}/L1/
+                    ```
+
+                    4. **Run scan again**: After generating L1 data, click 'Scan for Images' again in PhenoTag
+                    """)
+
+                # Show the structure warning after the expandable section
                 st.warning(
-                    f"No images found for {selected_instrument}. "
+                    f"No L1 images found for {selected_instrument}. "
                     f"Check that the path follows the structure: "
                     f"{st.session_state.data_directory}/{normalized_name}/phenocams/products/{selected_instrument}/L1/..."
                 )
+
+                # Store metadata in image_data with a special flag to prevent auto-scanning loop
+                # This records that we've already checked for L1 data for this station+instrument
+                if 'image_data' not in st.session_state:
+                    st.session_state.image_data = {}
+
+                # Store with a special verification flag to indicate no L1 data was found
+                # This is NOT marking a task as "done" - it's just a record that we've
+                # verified no L1 data exists so we don't keep auto-scanning
+                st.session_state.image_data[f"{normalized_name}_{selected_instrument}"] = {"_no_l1_data": True}
             
             # Reset scan request flags
             st.session_state.scan_requested = False
@@ -613,17 +1126,73 @@ def main():
                 # Get file paths for all selected days
                 daily_filepaths = []
 
-                # If we have selected days from the calendar, use those
-                if 'selected_days' in st.session_state and st.session_state.selected_days:
-                    for doy in st.session_state.selected_days:
-                        doy_str = str(doy)
-                        if doy_str in image_data[selected_year]:
-                            daily_filepaths.extend([f for f in image_data[selected_year][doy_str]])
-                # Otherwise, just use the single selected day
-                elif selected_day:
-                    daily_filepaths = [f for f in image_data[selected_year][selected_day]]
+                # Check if we're using lazy loading
+                if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+                    # Get scan info
+                    scan_info = st.session_state.scan_info
+                    base_dir = scan_info['base_dir']
+                    station_name = scan_info['station_name']
+                    instrument_id = scan_info['instrument_id']
+
+                    # Check if we have selected days from the calendar
+                    if 'selected_days' in st.session_state and st.session_state.selected_days:
+                        # Convert days to strings and ensure proper format
+                        days_to_load = [str(doy).zfill(3) for doy in st.session_state.selected_days]
+
+                        with st.spinner(f"Loading data for {len(days_to_load)} selected days..."):
+                            # Only load data for selected days (memory efficient)
+                            days_data = lazy_find_phenocam_images(
+                                base_dir=base_dir,
+                                station_name=station_name,
+                                instrument_id=instrument_id,
+                                year=selected_year,
+                                days=days_to_load
+                            )
+
+                            # Extract file paths from the loaded data
+                            if selected_year in days_data:
+                                for doy_str, doy_data in days_data[selected_year].items():
+                                    daily_filepaths.extend(list(doy_data.keys()))
+
+                                    # Update the image_data for this day
+                                    if selected_year not in image_data:
+                                        image_data[selected_year] = {}
+                                    image_data[selected_year][doy_str] = doy_data
+
+                    # Otherwise, just use the single selected day
+                    elif selected_day:
+                        with st.spinner(f"Loading data for day {selected_day}..."):
+                            # Only load data for the selected day (memory efficient)
+                            day_data = lazy_find_phenocam_images(
+                                base_dir=base_dir,
+                                station_name=station_name,
+                                instrument_id=instrument_id,
+                                year=selected_year,
+                                days=[selected_day]
+                            )
+
+                            # Extract file paths from the loaded data
+                            if selected_year in day_data and selected_day in day_data[selected_year]:
+                                daily_filepaths = list(day_data[selected_year][selected_day].keys())
+
+                                # Update the image_data for this day
+                                if selected_year not in image_data:
+                                    image_data[selected_year] = {}
+                                image_data[selected_year][selected_day] = day_data[selected_year][selected_day]
+
+                # For compatibility with existing data structure (non-lazy loading)
                 else:
-                    daily_filepaths = []
+                    # If we have selected days from the calendar, use those
+                    if 'selected_days' in st.session_state and st.session_state.selected_days:
+                        for doy in st.session_state.selected_days:
+                            doy_str = str(doy)
+                            if doy_str in image_data[selected_year]:
+                                daily_filepaths.extend([f for f in image_data[selected_year][doy_str]])
+                    # Otherwise, just use the single selected day
+                    elif selected_day:
+                        daily_filepaths = [f for f in image_data[selected_year][selected_day]]
+                    else:
+                        daily_filepaths = []
 
                 # Sort filepaths by name
                 daily_filepaths.sort()
@@ -691,16 +1260,18 @@ def main():
                                 dates.append("Unknown")
                                 doys.append("Unknown")
 
-                        # Create a dataframe - keep same data but will swap display names
+                        # Create a dataframe with proper index to avoid PyArrow conversion issues
                         df = pd.DataFrame(
-                            index=enumerate(daily_filepaths),
                             data={
                                 # Keep the same data in the same columns
                                 "DOY": doys,          # Column with DOY values
                                 "Date": dates,        # Column with Date values
-                                "Time": timestamps    # Column with Time values
+                                "Time": timestamps,   # Column with Time values
+                                "_index": list(range(len(daily_filepaths)))  # Add proper numeric index
                             }
                         )
+                        # Set the index
+                        df.set_index("_index", inplace=True)
 
                         # Show the interactive dataframe with row selection
                         event = st.dataframe(
@@ -742,9 +1313,20 @@ def main():
                     # Display the selected image in the main column
                     with main_col:
                         if event and event.selection.rows:
-                            index = event.selection.rows[0]
-                            filepath = daily_filepaths[index]
-                            
+                            try:
+                                # Convert to integer index (it might be a string from the dataframe)
+                                index = int(event.selection.rows[0])
+
+                                # Ensure index is in range
+                                if 0 <= index < len(daily_filepaths):
+                                    filepath = daily_filepaths[index]
+                                else:
+                                    st.error(f"Invalid selection index: {index}, out of range")
+                                    filepath = None
+                            except (ValueError, TypeError) as e:
+                                st.error(f"Error processing selection: {e}")
+                                filepath = None
+
                             if filepath:
                                 processor = ImageProcessor()
                                 processor.load_image(filepath)
@@ -773,308 +1355,13 @@ def main():
                 # Create an expander to show the raw data (useful for debugging)
                 with st.expander("Raw Data for Selected Year", expanded=False):
                     st.write(image_data.get(selected_year))
-        # Store important data in session state, but don't display titles/subtitles
+        # Store important data in session state
     if selected_station:
-        # Store station info in session state but don't display
+        # Store station info in session state
         st.session_state.current_station = selected_station
         if selected_instrument:
-            # Store instrument info in session state but don't display
+            # Store instrument info in session state
             st.session_state.current_instrument = selected_instrument
-            
-            # Skip most of the image data display for now during refactoring
-            key = f"{normalized_name}_{selected_instrument}"
-            if False and 'image_data' in st.session_state and key in st.session_state.image_data:
-                image_data = st.session_state.image_data[key]
-                
-                # Show summary statistics
-                years = list(image_data.keys())
-                years.sort(reverse=True)
-                
-                if years:
-                    total_days = sum(len(image_data[year]) for year in years)
-                    total_images = sum(len(files) for year in years for files in image_data[year].values())
-                    
-                    st.write(f"Total: {len(years)} years, {total_days} days, {total_images} images")
-                    
-                    # Year and day selection
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Default to the latest year if none selected
-                        if st.session_state.selected_year is None or st.session_state.selected_year not in years:
-                            st.session_state.selected_year = years[0]
-                        
-                        selected_year = st.selectbox(
-                            "Select Year", 
-                            years,
-                            index=years.index(st.session_state.selected_year)
-                        )
-                        
-                        # Auto-save if year selection changed
-                        if selected_year != st.session_state.selected_year:
-                            st.session_state.selected_year = selected_year
-                            save_session_config()
-                    
-                    # Get days for the selected year
-                    year_data = image_data[selected_year]
-                    days = list(year_data.keys())
-                    days.sort(reverse=True)
-                    
-                    
-                    # Display data for the selected day
-                    if days:
-                        # Create DataFrame for the data_editor
-                        df = create_image_dataframe(year_data, selected_day)
-                        
-                        if not df.empty:
-                            # Display data_editor with images and annotation controls
-                            st.write(f"## Images for Year {selected_year}, Day {selected_day}")
-                            
-                            # Initialize session state for selected image if not exists
-                            session_key = f"{selected_year}_{selected_day}_selected_image"
-                            if session_key not in st.session_state or st.session_state[session_key] is None:
-                                # Set the first image as default if there are any images
-                                if not df.empty:
-                                    st.session_state[session_key] = df.iloc[0]['file_path']
-                                else:
-                                    st.session_state[session_key] = None
-                            
-                            # Function to display the selected image in full size
-                            def display_selected_image(image_path):
-                                if image_path and image_path in df['file_path'].values:
-                                    # Find the index of this image in the dataframe
-                                    image_index = df[df['file_path'] == image_path].index[0]
-                                    st.write(f"Displaying image {image_index + 1} of {len(df)}")
-                                    
-                                    processor = ImageProcessor()
-                                    if processor.load_image(image_path):
-                                        img = processor.get_image()
-                                        if img is not None:
-                                            # Convert BGR to RGB for correct color display
-                                            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                                            st.image(img_rgb, caption=os.path.basename(image_path), use_container_width=True)
-                                            return True
-                                    else:
-                                        st.error(f"Failed to load image: {image_path}")
-                                        return False
-                                return False
-                            
-                            # Create container for the image display
-                            with st.container():
-                                # Display selected image
-                                st.subheader("Image Preview", divider=True)
-                                current_image_path = st.session_state[session_key]
-                                display_selected_image(current_image_path)
-                            
-                            # Add a spacing between image preview and data editor
-                            st.write("")
-                            
-                            # Add navigation buttons above the data editor
-                            st.subheader("Image Navigation", divider=True)
-                            nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 1])
-                            
-                            # Find current index in the dataframe
-                            current_index = 0
-                            if current_image_path in df['file_path'].values:
-                                current_index = df[df['file_path'] == current_image_path].index[0]
-                            
-                            with nav_col1:
-                                # Create a unique key for prev button to avoid interference
-                                prev_button_key = f"prev_button_{selected_year}_{selected_day}"
-                                if st.button("⬅️ Previous Image", 
-                                           disabled=current_index <= 0,
-                                           use_container_width=True,
-                                           key=prev_button_key):
-                                    # Get the previous image path
-                                    prev_index = max(0, current_index - 1)
-                                    prev_image_path = df.iloc[prev_index]['file_path']
-                                    # Update session state
-                                    st.session_state[session_key] = prev_image_path
-                                    st.rerun()
-                                    
-                            with nav_col2:
-                                # Display current position
-                                st.markdown(f"**Image {current_index + 1} of {len(df)}**", 
-                                           help="Current image position")
-                                
-                            with nav_col3:
-                                # Create a unique key for next button to avoid interference
-                                next_button_key = f"next_button_{selected_year}_{selected_day}"
-                                if st.button("Next Image ➡️", 
-                                           disabled=current_index >= len(df) - 1,
-                                           use_container_width=True,
-                                           key=next_button_key):
-                                    # Get the next image path
-                                    next_index = min(len(df) - 1, current_index + 1)
-                                    next_image_path = df.iloc[next_index]['file_path']
-                                    # Update session state
-                                    st.session_state[session_key] = next_image_path
-                                    st.rerun()
-                            
-                            # Configure column settings for data editor with thumbnails
-                            column_config = {
-                                "thumbnail": st.column_config.ImageColumn(
-                                    "Preview", help="Click to select this image", width="medium"),
-                                "filename": st.column_config.TextColumn("Filename", width="medium"),
-                                "file_path": st.column_config.TextColumn("File Path", width="medium"),
-                                "discard_file": st.column_config.CheckboxColumn("Discard File", width="small"),
-                                "snow_presence": st.column_config.CheckboxColumn("Snow Presence", width="small"),
-                                **{f"{roi}_discard": st.column_config.CheckboxColumn(f"{roi} Discard", width="small") 
-                                   for roi in ["ROI_01", "ROI_02", "ROI_03"]},
-                                **{f"{roi}_snow": st.column_config.CheckboxColumn(f"{roi} Snow", width="small")
-                                   for roi in ["ROI_01", "ROI_02", "ROI_03"]}
-                            }
-                            
-                            # Add a selection widget to allow direct image selection
-                            st.subheader("Image Selection", divider=True)
-                            
-                            # Create a selectbox for selecting an image by filename
-                            filenames = df['filename'].tolist()
-                            file_paths = df['file_path'].tolist()
-                            file_dict = dict(zip(filenames, file_paths))
-                            
-                            # Find current filename
-                            current_filename = os.path.basename(current_image_path) if current_image_path else filenames[0] if filenames else ""
-                            
-                            selected_filename = st.selectbox(
-                                "Select image by filename",
-                                options=filenames,
-                                index=filenames.index(current_filename) if current_filename in filenames else 0,
-                                key=f"filename_selector_{selected_year}_{selected_day}"
-                            )
-                            
-                            # Track the previous filename selection to prevent infinite loops
-                            filename_state_key = f"prev_filename_{selected_year}_{selected_day}"
-                            if filename_state_key not in st.session_state:
-                                st.session_state[filename_state_key] = current_filename
-                            
-                            # Only rerun if the selection actually changed from the last known state
-                            if (selected_filename in file_dict and 
-                                file_dict[selected_filename] != current_image_path and 
-                                selected_filename != st.session_state[filename_state_key]):
-                                # Store the current selection to avoid infinite loops
-                                st.session_state[filename_state_key] = selected_filename
-                                # Update the selected image
-                                st.session_state[session_key] = file_dict[selected_filename]
-                                # Rerun to update the display
-                                st.rerun()
-                                
-                            # Add a spacing before the data editor
-                            st.write("")
-                            
-                            # Subheader for data editor section
-                            st.subheader("Image Annotations and Data", divider=True)
-                            
-                            # Add instructions for using thumbnails
-                            st.info("👉 Click on a thumbnail to select that image for viewing.")
-                            
-                            # Enable image selection by clicking on thumbnails
-                            if current_image_path:
-                                # Find the index of the current file in the dataframe
-                                current_row_index = df[df['file_path'] == current_image_path].index[0] if current_image_path in df['file_path'].values else 0
-                                
-                                # Create the data editor with thumbnails
-                                edited_df = st.data_editor(
-                                    df,
-                                    column_config=column_config,
-                                    use_container_width=True,
-                                    num_rows="fixed",
-                                    hide_index=False,  # Show index for easier selection
-                                    column_order=["thumbnail", "filename", "discard_file", "snow_presence"] + 
-                                                [f"{roi}_{attr}" for roi in ["ROI_01", "ROI_02", "ROI_03"] 
-                                                 for attr in ["discard", "snow"]],
-                                    key=f"data_editor_{selected_year}_{selected_day}"
-                                )
-                                
-                                # Store the last edited data in session_state to prevent infinite loops
-                                editor_state_key = f"last_editor_state_{selected_year}_{selected_day}"
-                                if editor_state_key not in st.session_state:
-                                    st.session_state[editor_state_key] = None
-                                
-                                # Check if an image was clicked by detecting changes in edited dataframe
-                                if edited_df is not None and 'thumbnail' in edited_df.columns:
-                                    # Convert current dataframe to a hashable representation for comparison
-                                    current_df_state = tuple(row['file_path'] for i, row in edited_df.iterrows())
-                                    
-                                    # Only update if this is a new edit (prevents infinite loops)
-                                    if st.session_state[editor_state_key] != current_df_state:
-                                        # Store current state to avoid repeating
-                                        st.session_state[editor_state_key] = current_df_state
-                                        
-                                        # Check for changes in thumbnail that might indicate a click
-                                        for i, row in edited_df.iterrows():
-                                            if row['file_path'] != current_image_path:
-                                                # Different thumbnail clicked, update selection
-                                                st.session_state[session_key] = row['file_path']
-                                                st.rerun()
-                                                break
-                            
-                            
-                            # Add a save button with better UI
-                            st.divider()
-                            save_col1, save_col2 = st.columns([1, 1])
-                            with save_col1:
-                                # Use success/error messages instead of status to avoid nested expanders
-                                if st.button("💾 Save Annotations", type="primary", use_container_width=True):
-                                    # Get the image data key
-                                    key = f"{normalized_name}_{selected_instrument}"
-                                    
-                                    if key in st.session_state.image_data:
-                                        # Update image data with values from the edited DataFrame
-                                        if edited_df is not None:
-                                            for i, row in edited_df.iterrows():
-                                                file_path = row['file_path']
-                                                
-                                                # Update quality data
-                                                st.session_state.image_data[key][selected_year][selected_day][file_path]['quality'] = {
-                                                    'discard_file': row['discard_file'],
-                                                    'snow_presence': row['snow_presence']
-                                                }
-                                                
-                                                # Update ROI data
-                                                for roi in ["ROI_01", "ROI_02", "ROI_03"]:
-                                                    if f"{roi}_discard" in row and f"{roi}_snow" in row:
-                                                        st.session_state.image_data[key][selected_year][selected_day][file_path]['rois'][roi] = {
-                                                            'discard_roi': row[f"{roi}_discard"],
-                                                            'snow_presence': row[f"{roi}_snow"],
-                                                            'annotated_flags': st.session_state.image_data[key][selected_year][selected_day][file_path]['rois'][roi].get('annotated_flags', [])
-                                                        }
-                                        
-                                        # Save annotations to disk
-                                        success, msg = save_annotations(
-                                            st.session_state.image_data[key],
-                                            st.session_state.data_directory,
-                                            normalized_name,
-                                            selected_instrument,
-                                            selected_year,
-                                            selected_day
-                                        )
-                                        
-                                        # Save session config to remember where we left off
-                                        session_saved = save_session_config()
-                                        
-                                        if success and session_saved:
-                                            st.success(f"Annotations saved to {msg} and session saved successfully!")
-                                        elif success:
-                                            st.warning(f"Annotations saved to {msg}, but failed to save session.")
-                                        elif session_saved:
-                                            st.warning(f"Failed to save annotations: {msg}, but session saved successfully.")
-                                        else:
-                                            st.error(f"Failed to save annotations: {msg} and failed to save session.")
-                            
-                            with save_col2:
-                                if st.button("🔄 Reset Annotations", use_container_width=True):
-                                    st.rerun()  # Simply reload the page to reset the editor
-                        else:
-                            st.info(f"No images found for Day {selected_day}")
-            else:
-                # Minimal placeholder for info message
-                if st.session_state.data_directory and os.path.isdir(st.session_state.data_directory):
-                    # This info will be displayed in the main layout in the future
-                    pass
-                else:
-                    # This info will be displayed in the main layout in the future
-                    pass
 
 
 def handle_file_selection(edited_df):
