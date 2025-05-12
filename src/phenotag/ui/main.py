@@ -1587,11 +1587,6 @@ def main():
 
         # Bottom container for additional information
         with bottom_container:
-            if selected_year and selected_year in image_data:
-                # Create an expander to show the raw data (useful for debugging)
-                with st.expander("Raw Data for Selected Year", expanded=False):
-                    st.write(image_data.get(selected_year))
-
             # Add station configuration visualization
             st.divider()
             st.subheader("Station Configuration")
