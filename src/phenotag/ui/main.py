@@ -1783,8 +1783,8 @@ def deserialize_polygons(yaml_friendly_rois):
         # Get thickness (default to 2 if not present)
         thickness = roi_data.get('thickness', 2)
 
-        # Default alpha value if not present
-        alpha = roi_data.get('alpha', 0.3)
+        # Set alpha to 0 to disable filling
+        alpha = 0.0  # Disable filling
 
         # Store in the format expected by overlay_polygons_from_dict
         original_rois[roi_name] = {
@@ -1845,15 +1845,8 @@ def overlay_polygons(image_path, phenocam_rois: dict, show_names: bool = True, f
             # Draw the polygon on the image
             cv2.polylines(img, [points_array], isClosed=True, color=color, thickness=thickness)
 
-            # Optional fill with transparency
-            alpha = roi_data.get('alpha', 0.3)
-            if alpha > 0:
-                # Create a copy of the image for blending
-                overlay = img.copy()
-                # Fill the polygon
-                cv2.fillPoly(overlay, [points_array], color)
-                # Blend the images
-                cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+            # No fill - just outlines
+            # Removed the fill code to only show outlines
 
             # Add ROI name if requested
             if show_names:
