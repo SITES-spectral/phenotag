@@ -180,7 +180,7 @@ def load_session_config(config_path: Union[str, Path]) -> Dict[str, Any]:
         return {}
 
 
-from pydantic import BaseModel, validator, DirectoryPath
+from pydantic import BaseModel, DirectoryPath, field_validator
 from typing import Optional
 
 class PhenocamDataPath(BaseModel):
@@ -200,13 +200,13 @@ class PhenocamDataPath(BaseModel):
     station_name: str
     instrument_id: str
     
-    @validator('station_name')
+    @field_validator('station_name')
     def station_name_must_be_valid(cls, v):
         if not v or not isinstance(v, str):
             raise ValueError('Station name must be a non-empty string')
         return v
     
-    @validator('instrument_id')
+    @field_validator('instrument_id')
     def instrument_id_must_be_valid(cls, v):
         if not v or not isinstance(v, str):
             raise ValueError('Instrument ID must be a non-empty string')

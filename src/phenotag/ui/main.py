@@ -641,21 +641,86 @@ def main():
                 # Make sure we have file paths before attempting to display them
                 if daily_filepaths:
                     with left_col:
-                        # Create a DataFrame with filenames and paths
+                        # Add instructional text for users
+                        st.info("👇 Select a time below to view the corresponding image")
+
+                        # Create a DataFrame with filenames, paths, and timestamps
                         filenames = [os.path.basename(path) for path in daily_filepaths]
+
+                        # Extract data from filenames using the pattern
+                        # Format: {location}_{station_acronym}_{instrument_id}_{year}_{day_of_year}_{timestamp}.jpg
+                        timestamps = []
+                        dates = []
+                        doys = []
+
+                        for filename in filenames:
+                            parts = filename.split('_')
+                            if len(parts) >= 6:  # Make sure we have enough parts
+                                try:
+                                    # Extract year and day of year
+                                    year = parts[-3]
+                                    day_of_year = parts[-2]
+
+                                    # The timestamp is the last part (without extension)
+                                    timestamp = parts[-1].split('.')[0]
+
+                                    # Format as readable time (HHMMSS)
+                                    if len(timestamp) >= 6:  # Ensure it's at least HHMMSS format
+                                        formatted_time = f"{timestamp[0:2]}:{timestamp[2:4]}:{timestamp[4:6]}"
+                                        timestamps.append(formatted_time)
+                                    else:
+                                        timestamps.append(timestamp)  # Fallback
+
+                                    # Convert year and DOY to a readable date
+                                    try:
+                                        # Create date from year and day of year
+                                        date_obj = datetime.datetime.strptime(f"{year}-{day_of_year}", "%Y-%j").date()
+                                        formatted_date = date_obj.strftime("%Y-%m-%d")  # ISO format date
+                                        dates.append(formatted_date)
+                                        doys.append(f"{int(day_of_year):03d}")  # Just the number with leading zeros
+                                    except ValueError:
+                                        dates.append(f"{year}")
+                                        doys.append(f"{day_of_year}")
+                                except:
+                                    # Handle any parsing errors
+                                    timestamps.append("Unknown")
+                                    dates.append("Unknown")
+                                    doys.append("Unknown")
+                            else:
+                                timestamps.append("Unknown")
+                                dates.append("Unknown")
+                                doys.append("Unknown")
+
+                        # Create a dataframe - keep same data but will swap display names
                         df = pd.DataFrame(
                             index=enumerate(daily_filepaths),
-                            data={"Filename": filenames}
+                            data={
+                                # Keep the same data in the same columns
+                                "DOY": doys,          # Column with DOY values
+                                "Date": dates,        # Column with Date values
+                                "Time": timestamps    # Column with Time values
+                            }
                         )
 
                         # Show the interactive dataframe with row selection
                         event = st.dataframe(
                             df,
                             column_config={
-                                "Filename": st.column_config.TextColumn(
-                                    "File",
+                                # Swap the display names but keep the same data mapping
+                                "DOY": st.column_config.TextColumn(
+                                    "Date",     # First column shows DOY values with "Date" label
+                                    help="Calendar date (YYYY-MM-DD)",
+                                    width="small"
+                                ),
+                                "Date": st.column_config.TextColumn(
+                                    "DOY",      # Second column shows Date values with "DOY" label
+                                    help="Day of Year (1-365/366)",
+                                    width="small"
+                                ),
+                                "Time": st.column_config.TextColumn(
+                                    "Time",
                                     help="Click to select this file",
-                                    width="medium"
+                                    width="small"
                                 )
                             },
                             use_container_width=True,
