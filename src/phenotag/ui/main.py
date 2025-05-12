@@ -1587,6 +1587,134 @@ def main():
 
         # Bottom container for additional information
         with bottom_container:
+            # Show ROI annotation editor when an image is selected
+            if 'selected_day' in st.session_state and st.session_state.selected_day:
+                st.divider()
+                st.subheader("ROI Annotations")
+
+                # Get currently selected image filepath
+                current_filepath = None
+                if 'event' in locals() and event and event.selection and event.selection.rows:
+                    try:
+                        index = int(event.selection.rows[0])
+                        if 0 <= index < len(daily_filepaths):
+                            current_filepath = daily_filepaths[index]
+                    except:
+                        pass
+
+                # Get list of ROI names from loaded ROIs
+                roi_names = []
+                if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
+                    roi_names = list(st.session_state.instrument_rois.keys())
+
+                # Create a list of all quality flags from flags.yaml
+                flag_options = []
+                for flag_key, flag_data in config.get('flags', {}).items():
+                    # Skip any non-flag entries
+                    if not isinstance(flag_data, dict) or 'category' not in flag_data:
+                        continue
+                    # Create a nice display name with category
+                    display_name = f"{flag_key[6:] if flag_key.startswith('iflag_') else flag_key} ({flag_data.get('category', 'Other')})"
+                    flag_options.append({"value": flag_key, "label": display_name})
+
+                # Sort flags by category for better organization
+                flag_options.sort(key=lambda x: x['label'])
+
+                # Initialize annotations dictionary if not exists
+                if 'image_annotations' not in st.session_state:
+                    st.session_state.image_annotations = {}
+
+                # Create a key for the current image path
+                image_key = current_filepath if current_filepath else "default"
+
+                # Create or retrieve annotations for current image
+                if image_key not in st.session_state.image_annotations:
+                    # Create default annotations for this image
+                    annotation_data = [
+                        {
+                            "roi_name": "ROI_00 (Default - Full Image)",
+                            "discard": False,
+                            "snow_presence": False,
+                            "quality_flags": ""  # Empty string for no selection
+                        }
+                    ]
+
+                    # Add a row for each custom ROI
+                    for roi_name in roi_names:
+                        annotation_data.append({
+                            "roi_name": roi_name,
+                            "discard": False,
+                            "snow_presence": False,
+                            "quality_flags": ""  # Empty string for no selection
+                        })
+                else:
+                    # Use existing annotations
+                    annotation_data = st.session_state.image_annotations[image_key]
+
+                # Convert to DataFrame
+                annotation_df = pd.DataFrame(annotation_data)
+
+                # Show the data editor with custom configuration
+                edited_annotations = st.data_editor(
+                    annotation_df,
+                    column_config={
+                        "roi_name": st.column_config.TextColumn(
+                            "ROI Name",
+                            help="Region of Interest name",
+                            width="medium",
+                            disabled=True
+                        ),
+                        "discard": st.column_config.CheckboxColumn(
+                            "Discard ROI",
+                            help="Mark this ROI as not suitable for analysis",
+                            width="small",
+                        ),
+                        "snow_presence": st.column_config.CheckboxColumn(
+                            "Snow Present",
+                            help="Mark if snow is present in this ROI",
+                            width="small",
+                        ),
+                        "quality_flags": st.column_config.SelectboxColumn(
+                            "Quality Flag",
+                            help="Select a quality flag for this ROI",
+                            width="large",
+                            options=[option["label"] for option in flag_options],
+                        ),
+                    },
+                    hide_index=True,
+                    num_rows="dynamic",
+                    key=f"roi_annotations_{image_key}",
+                    use_container_width=True
+                )
+
+                # Save the edited annotations back to session state
+                st.session_state.image_annotations[image_key] = edited_annotations.to_dict('records')
+
+                # Display current annotation status
+                if current_filepath:
+                    st.caption(f"Annotating: {os.path.basename(current_filepath)}")
+
+                # Add buttons for saving annotations
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("Save All Annotations", use_container_width=True):
+                        # Here you would save all annotations to a persistent storage
+                        # For example, to a JSON file or database
+                        st.success(f"Saved annotations for {len(st.session_state.image_annotations)} images!")
+
+                with col2:
+                    if st.button("Reset Current", use_container_width=True):
+                        # Remove annotations for current image
+                        if image_key in st.session_state.image_annotations:
+                            del st.session_state.image_annotations[image_key]
+                        st.rerun()
+
+                with col3:
+                    if st.button("Reset All", use_container_width=True):
+                        # Clear all annotations
+                        st.session_state.image_annotations = {}
+                        st.rerun()
+
             # Add station configuration visualization
             st.divider()
             st.subheader("Station Configuration")
