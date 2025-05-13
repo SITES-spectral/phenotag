@@ -1,0 +1,25 @@
+initial_green_up:
+  category: Phenology
+  DwC_mapping: "phenologicalStatus, dynamicProperties"
+  description: Onset of greening in the vegetation during spring.
+  value: False
+  penalty_value: 0
+initial_peak_greeness:
+  category: Phenology
+  DwC_mapping: "phenologicalStatus, dynamicProperties"
+  description: Peak of green vegetation during the growing season.
+  value: False
+  penalty_value: 0
+initial_leaf_discoloration:
+  category: Phenology
+  DwC_mapping: "phenologicalStatus, dynamicProperties"
+  description: Beginning of leaf color change due to senescence.
+  value: False
+  penalty_value: 0
+initial_leaf_fall:
+  category: Phenology
+  DwC_mapping: "phenologicalStatus, dynamicProperties"
+  description: Early signs of leaf drop in autumn.
+  value: False
+  penalty_value: 0
+

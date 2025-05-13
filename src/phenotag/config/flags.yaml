@@ -52,19 +52,13 @@
 #   value: False
 #   penalty_value: 0
 
-# v0.9-2025
+# v0.10-2025-05-13 Kexin Guo
 iflag_unusable:   # 2025-04-23
   category: Image Quality
   DwC_mapping: "measurementRemarks"
   description: "Image marked as permanently unusable and should be excluded from all processing"
   value: False
   penalty_value: 100  # Very high penalty to ensure it's always excluded
-iflag_disable_for_processing: 
-  value: False
-  penalty_value: 1
-  category: Image Quality
-  DwC_mapping: "measurementRemarks"
-  description: Image marked as unsuitable for analysis due to severe quality issues or for testing.
 iflag_bluish_dominated: # v0.6-2024
   category: Image Quality
   DwC_mapping: "measurementRemarks"
@@ -167,36 +161,6 @@ iflag_fallen_trees:
   description: Trees fallen into the camera's field of view, obstructing observations.
   value: False
   penalty_value: 0.75
-iflag_initial_green_up:
-  category: Phenology
-  DwC_mapping: "phenologicalStatus, dynamicProperties"
-  description: Onset of greening in the vegetation during spring.
-  value: False
-  penalty_value: 0
-iflag_initial_peak_greeness:
-  category: Phenology
-  DwC_mapping: "phenologicalStatus, dynamicProperties"
-  description: Peak of green vegetation during the growing season.
-  value: False
-  penalty_value: 0
-iflag_initial_leaf_discoloration:
-  category: Phenology
-  DwC_mapping: "phenologicalStatus, dynamicProperties"
-  description: Beginning of leaf color change due to senescence.
-  value: False
-  penalty_value: 0
-iflag_initial_leaf_fall:
-  category: Phenology
-  DwC_mapping: "phenologicalStatus, dynamicProperties"
-  description: Early signs of leaf drop in autumn.
-  value: False
-  penalty_value: 0
-iflag_sun_altitude_low_20deg:
-  category: Weather Conditions
-  DwC_mapping: "weatherConditions"
-  description: Sun's low altitude leading to reduced sunlight, common in winter or high latitudes.
-  value: False
-  penalty_value: 0.25
 iflag_high_brightness:
   category: Illumination & Weather
   DwC_mapping: "measurementRemarks"
@@ -269,6 +233,12 @@ iflag_small_wildlife:  # v0.8-2025
   description: Small wildlife, such as mammals or birds, interrupting the scene.
   value: False
   penalty_value: 1
+sun_altitude_low_20deg:
+  category: Weather Conditions
+  DwC_mapping: "weatherConditions"
+  description: Sun's low altitude leading to reduced sunlight, common in winter or high latitudes.
+  value: False
+  penalty_value: 0.25
 iflag_other:
   category: Other
   DwC_mapping: "eventRemarks"

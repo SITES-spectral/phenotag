@@ -264,13 +264,11 @@ def create_calendar(year: int, month: int, image_data: Dict, on_select=None):
                         try:
                             day_int = int(day)
                             button_text = f"{day_int}"
-                            if img_count > 0:
-                                button_text += f" ({img_count})"
+                            # Image count removed as requested
                         except (ValueError, TypeError):
                             # Handle conversion errors
                             button_text = "?"
-                            if img_count > 0:
-                                button_text += f" ({img_count})"
+                            # Image count removed as requested
                             
                         button_type = "primary" if is_selected else "secondary"
                         

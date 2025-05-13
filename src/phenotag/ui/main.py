@@ -1291,7 +1291,7 @@ def main():
 
                         # Add ROI toggle at the top of the left column with session state persistence
                         if 'show_roi_overlays' not in st.session_state:
-                            st.session_state.show_roi_overlays = False
+                            st.session_state.show_roi_overlays = True
 
                         # Simple toggle for ROI display
                         show_rois = st.toggle("Show ROI Overlays", value=st.session_state.show_roi_overlays,
@@ -1443,7 +1443,12 @@ def main():
                             st.write(f"{len(daily_filepaths)} images available for day {selected_day}")
 
                         # Instructions for the user
-                        st.write("**Click on a row to view the image**")
+                        # st.write("**Click on a row to view the image**")
+                        
+                        
+                        # Removed checkboxes from here - they're now in the bottom container
+
+                        
 
                     # Display the selected image in the main column
                     with main_col:
@@ -1707,7 +1712,7 @@ def main():
                             "roi_name": "ROI_00",  #(Default - Full Image)
                             "discard": False,
                             "snow_presence": False,
-                            "quality_flags": ""  # Empty string for no selection
+                            "has_flags": False,  # Empty string for no selection
                         }
                     ]
 
@@ -1717,7 +1722,7 @@ def main():
                             "roi_name": roi_name,
                             "discard": False,
                             "snow_presence": False,
-                            "quality_flags": ""  # Empty string for no selection
+                            "has_flags": False,  # Empty string for no selection
                         })
                 else:
                     # Use existing annotations
@@ -1726,6 +1731,69 @@ def main():
                 # Convert to DataFrame
                 annotation_df = pd.DataFrame(annotation_data)
 
+                # Create a container for batch controls above the data editor
+                batch_control_container = st.container()
+                with batch_control_container:
+                    # Add a visual divider and header for the batch controls
+                    st.divider()
+                    st.write("### Batch Update Controls")
+                    st.caption("Use these controls to set flags for all ROIs at once")
+                    # Use 3 columns for the batch controls
+                    batch_col1, batch_col2, batch_col3 = st.columns(3)
+                    
+                    with batch_col1:
+                        if 'all_discard' not in st.session_state:
+                            st.session_state.all_discard = False
+                        
+                        all_discard = st.checkbox(
+                            "All ROIs: discard",
+                            value=st.session_state.all_discard,
+                            key="all_discard_checkbox",
+                            help="Set discard flag for all ROIs in this image")
+                        
+                        # Update session state when checkbox changes
+                        if all_discard != st.session_state.all_discard:
+                            st.session_state.all_discard = all_discard
+                    
+                    with batch_col2:
+                        if 'all_snow' not in st.session_state:
+                            st.session_state.all_snow = False
+                        
+                        all_snow = st.checkbox(
+                            "All ROIs: snow",
+                            value=st.session_state.all_snow,
+                            key="all_snow_checkbox",
+                            help="Set snow presence flag for all ROIs in this image")
+                        
+                        # Update session state when checkbox changes
+                        if all_snow != st.session_state.all_snow:
+                            st.session_state.all_snow = all_snow
+                    
+                    with batch_col3:
+                        if 'all_flags' not in st.session_state:
+                            st.session_state.all_flags = False
+                        
+                        all_flags = st.checkbox(
+                            "All ROIs: flags",
+                            value=st.session_state.all_flags,
+                            key="all_flags_checkbox",
+                            help="Set quality flag for all ROIs in this image")
+                        
+                        # Update session state when checkbox changes
+                        if all_flags != st.session_state.all_flags:
+                            st.session_state.all_flags = all_flags
+                    
+                    # Button to apply batch updates
+                    if st.button("Apply to All ROIs", use_container_width=True):
+                        if image_key in st.session_state.image_annotations:
+                            # Update all rows in the annotations
+                            for row in st.session_state.image_annotations[image_key]:
+                                row['discard'] = st.session_state.all_discard
+                                row['snow_presence'] = st.session_state.all_snow
+                                row['has_flags'] = st.session_state.all_flags
+                            # Force a rerun to update the data editor
+                            st.rerun()
+                
                 # Show the data editor with custom configuration
                 edited_annotations = st.data_editor(
                     annotation_df,
@@ -1746,11 +1814,11 @@ def main():
                             help="Mark if snow is present in this ROI",
                             width="small",
                         ),
-                        "quality_flags": st.column_config.SelectboxColumn(
+                        "has_flags": st.column_config.CheckboxColumn(
                             "Quality Flag",
-                            help="Select a quality flag for this ROI",
+                            help="Mark if a quality flag is present for this ROI",
                             width="large",
-                            options=[option["label"] for option in flag_options],
+                            # options=[option["label"] for option in flag_options],
                         ),
                     },
                     hide_index=True,
@@ -1842,9 +1910,9 @@ def main():
                         st.session_state.image_annotations = {}
                         st.rerun()
 
-            # Add station configuration visualization
+            # Add station configuration visualization in a more compact form
             st.divider()
-            st.subheader("Station Configuration")
+            st.subheader("Station Information")
 
             # Button to load all station data from stations.yaml
             if selected_station:
