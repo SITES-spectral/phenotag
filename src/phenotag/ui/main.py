@@ -1704,7 +1704,7 @@ def main():
                     # Create default annotations for this image
                     annotation_data = [
                         {
-                            "roi_name": "ROI_00 (Default - Full Image)",
+                            "roi_name": "ROI_00",  #(Default - Full Image)
                             "discard": False,
                             "snow_presence": False,
                             "quality_flags": ""  # Empty string for no selection
