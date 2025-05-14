@@ -79,6 +79,10 @@ class AnnotationTimer:
         # Update last interaction time
         st.session_state.annotation_timer_last_interaction = time.time()
         
+        # Ensure the annotation_timer_active is available
+        if 'annotation_timer_active' not in st.session_state:
+            st.session_state.annotation_timer_active = False
+        
         # If timer is not active but we have a current day, restart it
         if not st.session_state.annotation_timer_active and st.session_state.annotation_timer_current_day:
             self.start_timer(st.session_state.annotation_timer_current_day)
@@ -92,9 +96,19 @@ class AnnotationTimer:
         """
         self.initialize_session_state()
         
+        # Ensure the annotation_timer_active is available
+        if 'annotation_timer_active' not in st.session_state:
+            st.session_state.annotation_timer_active = False
+            return False
+            
         # Skip if timer is not active
         if not st.session_state.annotation_timer_active:
             return False
+            
+        # Ensure last_interaction time is available
+        if 'annotation_timer_last_interaction' not in st.session_state:
+            st.session_state.annotation_timer_last_interaction = time.time()
+            return True
             
         # Calculate time since last interaction
         current_time = time.time()
@@ -111,8 +125,17 @@ class AnnotationTimer:
         """Pause the timer and accumulate elapsed time."""
         self.initialize_session_state()
         
+        # Ensure the annotation_timer_active is available
+        if 'annotation_timer_active' not in st.session_state:
+            st.session_state.annotation_timer_active = False
+            return
+            
         # Skip if timer is not active
         if not st.session_state.annotation_timer_active:
+            return
+            
+        # Ensure current day is available
+        if 'annotation_timer_current_day' not in st.session_state or not st.session_state.annotation_timer_current_day:
             return
             
         # Get current day
@@ -120,10 +143,19 @@ class AnnotationTimer:
         if not day:
             return
             
+        # Ensure start time is available
+        if 'annotation_timer_start' not in st.session_state or not st.session_state.annotation_timer_start:
+            st.session_state.annotation_timer_start = time.time()
+            return
+            
         # Calculate elapsed time since timer started
         current_time = time.time()
         elapsed = current_time - st.session_state.annotation_timer_start
         
+        # Ensure accumulated times dict is available
+        if 'annotation_timer_accumulated' not in st.session_state:
+            st.session_state.annotation_timer_accumulated = {}
+            
         # Add to accumulated time for this day
         if day in st.session_state.annotation_timer_accumulated:
             st.session_state.annotation_timer_accumulated[day] += elapsed
@@ -146,8 +178,25 @@ class AnnotationTimer:
         """
         self.initialize_session_state()
         
+        # Ensure accumulated times dict is available
+        if 'annotation_timer_accumulated' not in st.session_state:
+            st.session_state.annotation_timer_accumulated = {}
+            
         # Get accumulated time for this day
         accumulated = st.session_state.annotation_timer_accumulated.get(day, 0)
+        
+        # Ensure other timer state variables are available
+        if 'annotation_timer_active' not in st.session_state:
+            st.session_state.annotation_timer_active = False
+            return accumulated
+            
+        if 'annotation_timer_current_day' not in st.session_state:
+            st.session_state.annotation_timer_current_day = None
+            return accumulated
+            
+        if 'annotation_timer_start' not in st.session_state:
+            st.session_state.annotation_timer_start = None
+            return accumulated
         
         # If timer is active and for this day, add current session time
         if (st.session_state.annotation_timer_active and 

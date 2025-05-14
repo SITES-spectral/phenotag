@@ -102,6 +102,11 @@ def render_sidebar():
                 
             # Clear annotations since we're changing station
             st.session_state.image_annotations = {}
+            
+            # Clear annotation status cache when changing station
+            if 'annotation_status_map' in st.session_state:
+                st.session_state.annotation_status_map = {}
+                print("Cleared annotation status cache due to station change")
 
         # Update the selected station
         st.session_state.selected_station = selected_station
@@ -159,6 +164,11 @@ def render_sidebar():
                         
                     # Clear annotations since we're changing instrument
                     st.session_state.image_annotations = {}
+                    
+                    # Clear annotation status cache when changing instrument
+                    if 'annotation_status_map' in st.session_state:
+                        st.session_state.annotation_status_map = {}
+                        print("Cleared annotation status cache due to instrument change")
 
                 st.session_state.selected_instrument = selected_instrument
 

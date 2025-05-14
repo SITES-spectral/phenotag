@@ -480,13 +480,9 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                 left_col, main_col = st.columns([2, 5])
 
                 with left_col:
-                    # Add ROI toggle and controls at the top of the left column
-                    st.divider()
-                    st.write("**ROI Controls**")
-                    
                     # Add ROI toggle with session state persistence
                     if 'show_roi_overlays' not in st.session_state:
-                        st.session_state.show_roi_overlays = True
+                        st.session_state.show_roi_overlays = False
 
                     # Simple toggle for ROI display
                     show_rois = st.toggle("Show ROI Overlays", value=st.session_state.show_roi_overlays,
@@ -530,15 +526,17 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
 
                         # Display the legend if we have data
                         if legend_data:
-                            # Create a simple vertical list of ROIs with colors
-                            for item in legend_data:
-                                st.markdown(
-                                    f'<div style="display: flex; align-items: center; margin-bottom: 5px;">'
-                                    f'<div style="margin-right: 10px;">{item["Color"]}</div>'
-                                    f'<div>{item["ROI"]}</div>'
-                                    f'</div>',
-                                    unsafe_allow_html=True
-                                )
+                            with st.expander("ROI Legend", expanded=True):                               
+
+                                # Create a simple vertical list of ROIs with colors
+                                for item in legend_data:
+                                    st.markdown(
+                                        f'<div style="display: flex; align-items: center; margin-bottom: 5px;">'
+                                        f'<div style="margin-right: 10px;">{item["Color"]}</div>'
+                                        f'<div>{item["ROI"]}</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True
+                                    )
                     
                     # Display the image selection list
                     event = display_image_list(daily_filepaths)

@@ -87,6 +87,7 @@ def generate_month_calendar(year: int, month: int, image_counts: Dict[str, int] 
                     "day": day,
                     "doy": doy,
                     "doy_padded": doy_padded,
+                    "year": year,
                     "image_count": img_count
                 }
     
@@ -131,8 +132,39 @@ def style_calendar_cell(day: Optional[int], metadata: Dict, max_images: int) -> 
             "color": "transparent"
         }
     
+    # Get day of year for annotation status
+    doy = metadata.get("doy_padded", None)
     img_count = metadata.get("image_count", 0)
     color = get_color_scale(img_count, max_images)
+    
+    # Get annotation status if possible
+    annotation_status = "not_annotated"
+    try:
+        from phenotag.ui.components.annotation_status import check_day_annotation_status, get_status_color
+        
+        # Get status if we have scan info
+        if hasattr(st.session_state, 'scan_info') and doy:
+            scan_info = st.session_state.scan_info
+            base_dir = scan_info['base_dir']
+            station_name = scan_info['station_name']
+            instrument_id = scan_info['instrument_id']
+            year = metadata.get("year", st.session_state.get('selected_year'))
+            
+            if year and base_dir and station_name and instrument_id:
+                annotation_status = check_day_annotation_status(
+                    base_dir, 
+                    station_name, 
+                    instrument_id, 
+                    year, 
+                    doy
+                )
+                
+                # Use status-based color
+                status_color = get_status_color(annotation_status)
+                if status_color:
+                    color = status_color
+    except Exception as e:
+        print(f"Error getting annotation status for styling: {str(e)}")
     
     style = {
         "backgroundColor": color,
@@ -148,6 +180,12 @@ def style_calendar_cell(day: Optional[int], metadata: Dict, max_images: int) -> 
     if img_count > 0:
         # Add background position and image count as text
         style["position"] = "relative"
+    
+    # Add borders for annotation status
+    if annotation_status == 'completed':
+        style["borderLeft"] = "3px solid #4CAF50"  # Green border
+    elif annotation_status == 'in_progress':
+        style["borderLeft"] = "3px solid #FF9800"  # Orange border
         
     return style
 
@@ -270,6 +308,58 @@ def create_calendar(year: int, month: int, image_data: Dict, on_select=None):
                             button_text = "?"
                             # Image count removed as requested
                             
+                        # Get annotation status
+                        try:
+                            from phenotag.ui.components.annotation_status import check_day_annotation_status, get_status_icon
+                            
+                            # Get status if we have scan info
+                            annotation_status = "not_annotated"
+                            if hasattr(st.session_state, 'scan_info'):
+                                scan_info = st.session_state.scan_info
+                                base_dir = scan_info['base_dir']
+                                station_name = scan_info['station_name']
+                                instrument_id = scan_info['instrument_id']
+                                
+                                # Check if we have padded format
+                                doy_padded = meta.get("doy_padded", doy)
+                                
+                                # Try to get from cache first
+                                if 'annotation_status_map' in st.session_state:
+                                    # Extract month from day number
+                                    try:
+                                        from datetime import datetime
+                                        date = datetime.strptime(f"{year}-{doy_padded}", "%Y-%j")
+                                        month = date.month
+                                        status_key = f"{station_name}_{instrument_id}_{year}_{month}"
+                                        
+                                        # Get from cache if available
+                                        if status_key in st.session_state.annotation_status_map:
+                                            cached_status = st.session_state.annotation_status_map[status_key].get(doy_padded)
+                                            if cached_status:
+                                                annotation_status = cached_status
+                                    except:
+                                        # Fall back to direct check
+                                        pass
+                                
+                                # If not in cache, check directly
+                                if annotation_status == "not_annotated":
+                                    annotation_status = check_day_annotation_status(
+                                        base_dir, 
+                                        station_name, 
+                                        instrument_id, 
+                                        year, 
+                                        doy_padded
+                                    )
+                            
+                            # Add status icon to button text
+                            status_icon = get_status_icon(annotation_status)
+                            if status_icon:
+                                button_text = f"{button_text} {status_icon}"
+                        except Exception as e:
+                            print(f"Error getting annotation status: {str(e)}")
+                            
+                        # Current selected day (single selection)
+                        is_selected = st.session_state.get('selected_day') == str(doy)
                         button_type = "primary" if is_selected else "secondary"
                         
                         # Disable days with no images
@@ -277,13 +367,15 @@ def create_calendar(year: int, month: int, image_data: Dict, on_select=None):
                         
                         if st.button(button_text, key=f"day_{year}_{month}_{doy}", 
                                      type=button_type, disabled=disabled):
-                            # Toggle selection of this day
-                            if is_selected:
-                                st.session_state[selection_key].remove(doy)
-                            else:
-                                if selection_key not in st.session_state:
-                                    st.session_state[selection_key] = []
-                                st.session_state[selection_key].append(doy)
+                            # Set this day as the selected day (single selection)
+                            st.session_state.selected_day = str(doy)
+                            
+                            # Store a list with just this day for backward compatibility
+                            if selection_key not in st.session_state:
+                                st.session_state[selection_key] = []
+                            st.session_state[selection_key] = [doy]
+                            
+                            # Rerun to update UI
                             st.rerun()
     
     # Process calendar selection
@@ -297,8 +389,14 @@ def create_calendar(year: int, month: int, image_data: Dict, on_select=None):
     if clicked_key in st.session_state:
         selected_week = st.session_state[clicked_key]
         
+    # Add a legend for annotation status
+    st.markdown("##### Annotation Status")
+    st.markdown("✅ - Completed | 🔶 - In Progress | No icon - Not started")
+    
     # Add a clear selection button
     if st.button("Clear Selection", key=f"clear_{year}_{month}"):
+        # Clear both single selection and multi-selection for backward compatibility
+        st.session_state.selected_day = None
         st.session_state[selection_key] = []
         if clicked_key in st.session_state:
             del st.session_state[clicked_key]

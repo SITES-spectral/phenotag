@@ -92,6 +92,11 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
                 
             # Now clear the annotations
             st.session_state.image_annotations = {}
+            
+            # Clear annotation status cache when changing year
+            if 'annotation_status_map' in st.session_state:
+                st.session_state.annotation_status_map = {}
+                print("Cleared annotation status cache due to year change")
         # Auto-save when selection changes
         save_session_config()
         # Trigger a rerun to update the UI
@@ -120,7 +125,17 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
         st.session_state.selected_month = selected_month_idx
         # Reset selected days when month changes
         st.session_state.selected_days = []
-
+        # Reset selected day
+        st.session_state.selected_day = None
+        
+        # Clear annotations and save current ones when changing months
+        if 'image_annotations' in st.session_state and st.session_state.image_annotations:
+            # Save the annotations first to avoid losing data
+            from phenotag.ui.components.annotation import save_all_annotations
+            save_all_annotations()
+            # Clear annotations 
+            st.session_state.image_annotations = {}
+            
         # Force a refresh of the calendar for the new month if using lazy loading
         if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
             # Get scan info
@@ -170,6 +185,58 @@ def render_calendar(normalized_name, selected_instrument, selected_year, selecte
     Returns:
         list: List of selected days
     """
+    # Preload annotation status for all days in this month
+    try:
+        from phenotag.ui.components.annotation_status import check_day_annotation_status
+        
+        # Only check if we have scan info
+        if hasattr(st.session_state, 'scan_info'):
+            scan_info = st.session_state.scan_info
+            base_dir = scan_info['base_dir']
+            station_name = scan_info['station_name']
+            instrument_id = scan_info['instrument_id']
+            
+            # If we don't have a cached annotation status map, create it
+            if 'annotation_status_map' not in st.session_state:
+                st.session_state.annotation_status_map = {}
+                
+            # Create a key for this combination
+            status_key = f"{normalized_name}_{selected_instrument}_{selected_year}_{selected_month}"
+            
+            # Check if we need to load status
+            if status_key not in st.session_state.annotation_status_map:
+                # Create a new status map for this month
+                status_map = {}
+                
+                # Get days in this month (basic calculation)
+                _, num_days = calendar.monthrange(int(selected_year), selected_month)
+                
+                # Check each day in the month
+                import datetime
+                month_start = datetime.datetime(int(selected_year), selected_month, 1)
+                for day in range(1, num_days + 1):
+                    # Calculate day of year
+                    this_date = month_start + datetime.timedelta(days=day-1)
+                    doy = this_date.timetuple().tm_yday
+                    padded_doy = f"{doy:03d}"
+                    
+                    # Check status
+                    status = check_day_annotation_status(
+                        base_dir, 
+                        station_name, 
+                        instrument_id, 
+                        selected_year, 
+                        padded_doy
+                    )
+                    
+                    # Store in map
+                    status_map[padded_doy] = status
+                
+                # Store the map
+                st.session_state.annotation_status_map[status_key] = status_map
+                print(f"Preloaded annotation status for {len(status_map)} days in {selected_month}/{selected_year}")
+    except Exception as e:
+        print(f"Error preloading annotation status: {str(e)}")
     if not selected_year or not selected_month:
         return []
         
@@ -359,26 +426,38 @@ def display_calendar_view(normalized_name, selected_instrument):
     # Render calendar for the selected year and month
     selected_days = render_calendar(normalized_name, selected_instrument, selected_year, selected_month)
     
-    # Check if selected days have changed
-    days_changed = False
-    if 'selected_days' in st.session_state:
-        if set(selected_days) != set(st.session_state.selected_days):
-            days_changed = True
-    else:
-        days_changed = len(selected_days) > 0
-
-    # Update session state with selected days
-    if selected_days:
+    # Check if day selection has changed
+    day_changed = False
+    
+    # Check if current day is different from selected day
+    current_day = st.session_state.get('selected_day')
+    
+    # Handle case where we have days selected in multi-select but no single day
+    if selected_days and not current_day:
+        # Select the first day in the list
+        current_day = str(selected_days[0])
+        st.session_state.selected_day = current_day
+        day_changed = True
+        
+    # If we have a single day selected but it's not in selected_days (compatibility)
+    if current_day and selected_days and current_day not in [str(day) for day in selected_days]:
+        # Update selected_days to match single selection
+        selected_days = [int(current_day)]
         st.session_state.selected_days = selected_days
-        # Select the first day as current day if no day is selected
-        previous_day = st.session_state.selected_day if 'selected_day' in st.session_state else None
-        if not st.session_state.selected_day or st.session_state.selected_day not in [str(day) for day in selected_days]:
-            st.session_state.selected_day = str(selected_days[0])
-            days_changed = True
-            save_session_config()
+        day_changed = True
+    
+    # For backward compatibility, ensure selected_days always has at least the current day
+    if current_day and (not selected_days or int(current_day) not in selected_days):
+        selected_days = [int(current_day)]
+        st.session_state.selected_days = selected_days
+        day_changed = True
+        
+    # Save any changes to the configuration
+    if day_changed:
+        save_session_config()
             
     # If days changed, clear image annotations to ensure we load fresh annotations
-    if days_changed and 'image_annotations' in st.session_state:
+    if day_changed and 'image_annotations' in st.session_state:
         # Save existing annotations first to preserve data
         if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
             from phenotag.ui.components.annotation import save_all_annotations
