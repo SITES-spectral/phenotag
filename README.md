@@ -165,6 +165,11 @@ The annotation system features:
 - Automatic loading of existing annotations when navigating to a day
 - Persistence of annotations across sessions
 - Clear status indicators showing the annotation state
+- **Annotation timer that tracks time spent on each day:**
+  - Automatically tracks active annotation time with 3-minute inactivity detection
+  - Displays elapsed time in the annotation panel
+  - Persists timing data in annotation files for reporting and analytics
+  - Accumulates annotation time across multiple sessions
 
 For detailed documentation, see `docs/annotation_system.md`.
 

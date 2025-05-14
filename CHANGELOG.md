@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Contextual save button that changes label based on save status
   - Visual indicators showing saved/unsaved state with timestamps
   - Automatic saving when navigating between days, instruments, or stations
+- **Annotation timer system for tracking work metrics:**
+  - Automatic tracking of time spent on annotations for each day
+  - Inactivity detection that pauses timer after 3 minutes without interaction
+  - Persistent time tracking that accumulates across sessions
+  - Display of elapsed annotation time in the UI
+  - Storage of annotation time as metadata in YAML files
+  - Integration with navigation and auto-save systems
+  - Automatic pausing when switching contexts (days, instruments, stations)
 
 ### Changed
 - Further improved directory scanner to handle all day-of-year formats (padded, unpadded, and integer)

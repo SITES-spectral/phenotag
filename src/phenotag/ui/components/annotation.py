@@ -234,7 +234,6 @@ def display_annotation_panel(current_filepath):
                              help="Automatically save annotations every 60 seconds")
         if auto_save and st.session_state.get('unsaved_changes', False):
             # Add a placeholder for auto-save countdown
-            import datetime
             if 'auto_save_time' not in st.session_state:
                 st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
             
@@ -369,7 +368,6 @@ def save_all_annotations():
             st.session_state.unsaved_changes = False
             
         # Update last save time
-        import datetime
         st.session_state.last_save_time = datetime.datetime.now()
         
         # Restart timer for current day if it exists
