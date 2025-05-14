@@ -143,10 +143,10 @@ def display_annotation_panel(current_filepath):
                 with roi_col1:
                     # Create checkbox for discard
                     discard = st.checkbox(
-                        "Discard ROI", 
+                        "Discard", 
                         value=roi_data.get("discard", False),
                         key=f"discard_{roi_key}",
-                        help="Mark this ROI as not suitable for analysis"
+                        help="Mark this image/ROI as not suitable for analysis"
                     )
                     
                     # Create checkbox for snow presence
@@ -409,15 +409,28 @@ def display_annotation_panel(current_filepath):
         # Display current annotation status
         st.caption(f"Annotating: {os.path.basename(current_filepath)}")
         
-        # Auto-save annotations if they have changed
+        # Handle changes to annotations
         if annotations_changed:
-            # Set a flag to indicate annotations have changed but not yet saved to disk
+            # Set a flag to indicate annotations have changed
             if 'unsaved_changes' not in st.session_state:
                 st.session_state.unsaved_changes = True
                 
             # Record interaction for annotation timer
             from phenotag.ui.components.annotation_timer import annotation_timer
             annotation_timer.record_interaction()
+            
+            # Get auto-save setting
+            auto_save_enabled = st.session_state.get('auto_save_enabled', True)
+            
+            # If immediate saving is enabled, save annotations right away
+            if auto_save_enabled and st.session_state.get('immediate_save_enabled', True):
+                # Save annotations immediately without waiting for timeout
+                save_all_annotations()
+                st.session_state.unsaved_changes = False
+                st.session_state.last_save_time = datetime.datetime.now()
+                if 'auto_save_time' in st.session_state:
+                    # Reset the auto-save timer
+                    st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
         
         # Add status indicator and save timestamp
         if 'last_save_time' not in st.session_state:
@@ -433,7 +446,19 @@ def display_annotation_panel(current_filepath):
         
         # Setup auto-save if enabled
         auto_save = st.checkbox("Enable auto-save", value=True, 
-                            help="Automatically save annotations every 60 seconds")
+                           help="Automatically save annotations every 60 seconds",
+                           key="auto_save_enabled")
+        
+        # Add immediate save option
+        immediate_save = st.checkbox("Save immediately on changes", value=True,
+                                help="Automatically save annotations immediately when changes are made",
+                                key="immediate_save_enabled")
+        
+        # Store auto-save preferences in session state
+        st.session_state.auto_save_enabled = auto_save
+        st.session_state.immediate_save_enabled = immediate_save
+        
+        # Handle timed auto-save if enabled (and immediate save is not active or didn't catch all changes)
         if auto_save and st.session_state.get('unsaved_changes', False):
             # Add a placeholder for auto-save countdown
             if 'auto_save_time' not in st.session_state:
@@ -501,8 +526,22 @@ def display_annotation_panel(current_filepath):
                 st.rerun()
 
 
-def save_all_annotations():
-    """Save all image annotations to YAML files."""
+def save_all_annotations(force_save=False):
+    """
+    Save all image annotations to YAML files.
+    
+    Args:
+        force_save: If True, save regardless of auto-save settings
+    """
+    # Check if we should save based on auto-save settings
+    auto_save_enabled = st.session_state.get('auto_save_enabled', True)
+    immediate_save_enabled = st.session_state.get('immediate_save_enabled', True)
+    
+    # Skip saving if auto-save is disabled and not forcing
+    if not auto_save_enabled and not force_save and not immediate_save_enabled:
+        print("Skipping annotation save: auto-save is disabled and not forcing")
+        return
+        
     # Organize annotations by day for better storage
     annotations_by_day = {}
     saved_count = 0

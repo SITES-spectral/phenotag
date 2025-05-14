@@ -168,6 +168,11 @@ def main():
     
     # Handle scanning if requested
     if hasattr(st.session_state, 'scan_requested') and st.session_state.scan_requested:
+        # Save any existing annotations before scanning
+        if 'image_annotations' in st.session_state and st.session_state.image_annotations:
+            save_all_annotations(force_save=True)
+            print("Saved annotations before scanning for images")
+            
         with MemoryTracker("Image Scanning"):
             if handle_scan(normalized_name, selected_instrument):
                 # If scan was performed, no need to continue
@@ -195,6 +200,11 @@ def main():
     # Detect tab change
     tab_changed = prev_tab != st.session_state.active_tab
     
+    # Save annotations when changing tabs
+    if tab_changed and 'image_annotations' in st.session_state and st.session_state.image_annotations:
+        save_all_annotations(force_save=True)
+        print(f"Saved annotations when switching from {prev_tab} to {selected_tab} tab")
+    
     # Create a tab system based on the selected tab
     if selected_tab == "Current":
         current_tab = st.container()
@@ -204,9 +214,22 @@ def main():
         historical_tab = st.container()
     
     # Get current selections from session state
+    previous_year = st.session_state.get('previous_year')
+    previous_day = st.session_state.get('previous_day')
     selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
     selected_days = st.session_state.selected_days if 'selected_days' in st.session_state else []
     selected_day = st.session_state.selected_day if 'selected_day' in st.session_state else None
+    
+    # Check if day or year changed and save annotations if needed
+    if (previous_day is not None and selected_day is not None and previous_day != selected_day) or \
+       (previous_year is not None and selected_year is not None and previous_year != selected_year):
+        if 'image_annotations' in st.session_state and st.session_state.image_annotations:
+            save_all_annotations(force_save=True)
+            print(f"Saved annotations when changing from day {previous_day} to {selected_day} or year {previous_year} to {selected_year}")
+    
+    # Store current values as previous for next run
+    st.session_state['previous_year'] = selected_year
+    st.session_state['previous_day'] = selected_day
     
     # Track the current selection for day/instrument/station changes
     current_selection = {
@@ -227,7 +250,7 @@ def main():
     if tab_changed:
         # Save annotations before switching tabs
         if 'image_annotations' in st.session_state and st.session_state.image_annotations:
-            save_all_annotations()
+            save_all_annotations(force_save=True)
             print(f"Saved annotations when switching from {prev_tab} to {selected_tab} tab")
             
         # Pause the annotation timer when switching tabs
@@ -365,6 +388,11 @@ def main():
                     
                     # Update session state if changed
                     if historical_year != st.session_state.historical_year:
+                        # Save current annotations before changing year
+                        if 'image_annotations' in st.session_state and st.session_state.image_annotations:
+                            save_all_annotations()
+                            print(f"Saved annotations when changing year from {st.session_state.historical_year} to {historical_year}")
+                        
                         st.session_state.historical_year = historical_year
                         # Reset historical day selection
                         if 'historical_day' in st.session_state:
@@ -392,6 +420,11 @@ def main():
                 
                 # Update session state if changed
                 if historical_month != st.session_state.historical_month:
+                    # Save current annotations before changing month
+                    if 'image_annotations' in st.session_state and st.session_state.image_annotations:
+                        save_all_annotations()
+                        print(f"Saved annotations when changing month from {st.session_state.historical_month} to {historical_month}")
+                    
                     st.session_state.historical_month = historical_month
                     # Reset historical day selection
                     if 'historical_day' in st.session_state:
@@ -530,6 +563,11 @@ def main():
                             # Get the selected DOY
                             selected_row_idx = hist_event.selection.rows[0]
                             selected_doy = df.iloc[selected_row_idx]["DOY"]
+                            
+                            # Save current annotations before changing selected day
+                            if 'image_annotations' in st.session_state and st.session_state.image_annotations:
+                                save_all_annotations()
+                                print(f"Saved annotations when changing to historical day {selected_doy}")
                             
                             # Store in session state
                             st.session_state.historical_day = selected_doy

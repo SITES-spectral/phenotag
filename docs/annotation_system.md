@@ -31,26 +31,27 @@ annotations:
     - roi_name: "ROI_00"  # Default - Full Image
       discard: false
       snow_presence: false
-      has_flags: false
+      flags: []  # Empty list means no flags are set
     - roi_name: "ROI_01"
       discard: false
       snow_presence: false
-      has_flags: false
+      flags: ["sunny", "clouds"]  # List of applied flags
     - roi_name: "ROI_02"
       discard: false
       snow_presence: false
-      has_flags: false
+      flags: ["high_brightness"]  # Another example with one flag
   'file_name2.jpg':
     # ...similar structure as above
 ```
 
 Each image entry contains:
-- An array of ROI objects, each with discard, snow_presence, and has_flags properties
+- An array of ROI objects, each with discard, snow_presence, and flags properties
+- The flags property is a list of flag names that apply to this ROI
 - The first ROI entry (ROI_00) represents the entire image
 
 ## Auto-Save and Persistence
 
-PhenoTag features an intelligent annotation saving system that includes:
+PhenoTag features an enhanced annotation saving system that includes:
 
 1. **Auto-Save**:
    - Enabled by default, saves annotations automatically every 60 seconds when changes are detected
@@ -58,21 +59,30 @@ PhenoTag features an intelligent annotation saving system that includes:
    - Visual countdown shows when the next auto-save will occur
    - Status indicators show whether there are unsaved changes
 
-2. **Smart Save on Navigation**:
+2. **Immediate Save Option**:
+   - "Save immediately on changes" option for real-time persistence
+   - When enabled, annotations are saved instantly when any changes are made
+   - Complements the timed auto-save feature for maximum data protection
+   - Can be toggled independently from the timed auto-save
+
+3. **Force Save on Context Changes**:
    - Annotations are automatically saved when:
-     - Switching between days
+     - Switching between "Current" and "Historical" tabs
+     - Changing days in the calendar
      - Changing instruments
      - Changing stations
      - Changing years or months
-   - This ensures no data is lost during normal navigation
+     - Scanning for new images
+     - Clearing day selection
+   - These saves occur regardless of auto-save settings to ensure data safety
 
-3. **Manual Save**:
+4. **Manual Save**:
    - A "Save Now" button allows immediate saving at any time
    - Shows as "Save Now" when there are unsaved changes
    - Shows as "Save All" when everything is saved
    - Displays timestamp of the last save operation
 
-4. **Contextual Status Indicators**:
+5. **Contextual Status Indicators**:
    - Warning icon when unsaved changes exist
    - Success icon with timestamp when all changes are saved
    - Countdown timer showing seconds until next auto-save
@@ -116,15 +126,18 @@ PhenoTag includes an annotation timer system that tracks the time spent annotati
 
 The annotation system is implemented through several key functions:
 
-### `save_all_annotations()`
+### `save_all_annotations(force_save=False)`
 
 Organizes and saves annotations for all days to their respective YAML files.
 
+- Takes an optional `force_save` parameter to bypass auto-save settings
 - Groups annotations by day of year
 - Creates appropriate directory structure
 - Includes metadata like creation timestamp, station, and instrument
 - Saves accumulated annotation time for each day
 - Updates status indicators and session state
+- Respects auto-save and immediate-save settings when not forcing
+- Used automatically during context changes with `force_save=True`
 
 ### `load_day_annotations(selected_day, daily_filepaths)`
 
@@ -198,12 +211,41 @@ When no annotations exist for an image, the following default values are used:
         "roi_name": "ROI_00",  # Default - Full Image
         "discard": False,
         "snow_presence": False,
-        "has_flags": False
+        "flags": []  # Empty list for no flags
     }
 ]
 ```
 
 Additional ROIs (if defined in stations.yaml) will be added to this list with the same default values.
+
+## ROI Annotation Interface
+
+PhenoTag features a tabbed interface for ROI annotations:
+
+1. **ROI Tabs**:
+   - Each ROI has its own dedicated tab for focused annotation
+   - Tabs are automatically generated based on available ROIs
+   - Easy navigation between different ROIs
+   - Clear context of which ROI is being annotated
+
+2. **Quality Flags Selection**:
+   - Each ROI tab contains a multiselect widget for flag selection
+   - Flags are organized by category for easier browsing
+   - Flags display their category for better context
+   - Selected flags are displayed with their categories
+   
+3. **Apply from ROI_00 Feature**:
+   - The ROI_00 tab (full image) has an "Apply these flags to all ROIs" option
+   - When enabled, flags from ROI_00 are applied to all other ROIs
+   - Useful for setting common flags across multiple ROIs quickly
+   - Changes take effect immediately
+
+4. **Summary Tab**:
+   - Final tab provides a complete overview of all ROIs
+   - Table view shows discard status, snow presence, and applied flags
+   - Shows which ROIs inherit flags from ROI_00
+   - Includes metrics for total ROIs, discarded ROIs, and flagged ROIs
+   - Features a flag distribution chart showing most common flags
 
 ## Example Usage
 

@@ -93,7 +93,7 @@ def render_sidebar():
             # Save annotations first to avoid losing data
             if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
                 from phenotag.ui.components.annotation import save_all_annotations
-                save_all_annotations()
+                save_all_annotations(force_save=True)
                 
             # Pause the annotation timer when changing station
             if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
@@ -155,7 +155,7 @@ def render_sidebar():
                     # Save annotations first to avoid losing data
                     if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
                         from phenotag.ui.components.annotation import save_all_annotations
-                        save_all_annotations()
+                        save_all_annotations(force_save=True)
                         
                     # Pause the annotation timer when changing instrument
                     if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:

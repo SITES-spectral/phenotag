@@ -36,13 +36,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added "Load Full Station Configuration" button to view complete station data from stations.yaml
 - New station configuration viewer with tabs for formatted and raw JSON views
 - Interactive structured display of stations, platforms, instruments, and available ROIs
-- **Intelligent annotation auto-save system with:**
+- **Redesigned ROI annotations UI with tabbed interface:**
+  - Individual tab for each ROI for focused annotation
+  - Summary tab showing overview of all annotated ROIs
+  - Statistics on annotation status with metrics
+  - Flag distribution visualization
+  - Improved organization and workflow
+- **Enhanced annotation auto-save system with:**
   - Automatic saves every 60 seconds when changes are detected
   - User-configurable auto-save option with toggle
+  - "Save immediately on changes" option for real-time persistence
   - Visual countdown timer for next auto-save
   - Contextual save button that changes label based on save status
   - Visual indicators showing saved/unsaved state with timestamps
   - Automatic saving when navigating between days, instruments, or stations
+  - Forced saves on all context changes (switching tabs, days, stations, instruments)
+  - Comprehensive save enforcement during critical operations
 - **Annotation timer system for tracking work metrics:**
   - Automatic tracking of time spent on annotations for each day
   - Inactivity detection that pauses timer after 3 minutes without interaction
