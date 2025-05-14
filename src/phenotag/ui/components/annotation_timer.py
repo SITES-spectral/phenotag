@@ -237,6 +237,25 @@ class AnnotationTimer:
         minutes, seconds = divmod(remainder, 60)
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     
+    def get_accumulated_time(self, day):
+        """
+        Get accumulated time for a specific day (without including current session).
+        
+        Args:
+            day (str): Day of year
+            
+        Returns:
+            float: Accumulated time in seconds
+        """
+        self.initialize_session_state()
+        
+        # Ensure accumulated times dict is available
+        if 'annotation_timer_accumulated' not in st.session_state:
+            st.session_state.annotation_timer_accumulated = {}
+            
+        # Get accumulated time for this day
+        return st.session_state.annotation_timer_accumulated.get(day, 0)
+    
     def set_accumulated_time(self, day, minutes):
         """
         Set accumulated time for a specific day.

@@ -695,17 +695,31 @@ def save_all_annotations(force_save=False):
                         annotations_file = os.path.join(l1_dir, f"annotations_{doy}.yaml")
                         
                         # Get elapsed annotation time for this day in minutes
-                        annotation_time_minutes = annotation_timer.get_elapsed_time_minutes(doy)
+                        current_session_time = annotation_timer.get_elapsed_time_minutes(doy)
 
                         # Check if existing annotations file exists and load it to preserve data
                         existing_data = {}
+                        existing_time_minutes = 0.0
                         if os.path.exists(annotations_file):
                             try:
                                 with open(annotations_file, 'r') as f:
                                     existing_data = yaml.safe_load(f) or {}
+                                
+                                # Get existing annotation time if available
+                                if "annotation_time_minutes" in existing_data:
+                                    existing_time_minutes = existing_data["annotation_time_minutes"]
+                                    print(f"Found existing annotation time: {existing_time_minutes:.2f} minutes")
+                                
                                 print(f"Loaded existing annotations file to preserve data: {annotations_file}")
                             except Exception as e:
                                 print(f"Error loading existing annotations: {str(e)}")
+
+                        # Calculate total annotation time (add current session to existing time)
+                        # Only add current session time if it's greater than 0 (to avoid adding time when just loading)
+                        total_annotation_time = existing_time_minutes
+                        if current_session_time > 0:
+                            total_annotation_time += current_session_time
+                            print(f"Added current session time: {current_session_time:.2f} minutes. Total now: {total_annotation_time:.2f} minutes")
 
                         # Create basic annotations data structure
                         annotations_data = {
@@ -713,7 +727,7 @@ def save_all_annotations(force_save=False):
                             "day_of_year": doy,
                             "station": st.session_state.selected_station,
                             "instrument": st.session_state.selected_instrument,
-                            "annotation_time_minutes": annotation_time_minutes,
+                            "annotation_time_minutes": total_annotation_time,
                             "annotations": day_annotations
                         }
                         
@@ -857,7 +871,13 @@ def load_day_annotations(selected_day, daily_filepaths):
                     print(f"Loading previous annotation time: {previous_time:.2f} minutes")
                     
                     # Set the previous time as accumulated time for this day
-                    annotation_timer.set_accumulated_time(selected_day, previous_time)
+                    # Only if we don't already have accumulated time (to avoid double-counting)
+                    current_accumulated = annotation_timer.get_accumulated_time(selected_day)
+                    if current_accumulated == 0:
+                        annotation_timer.set_accumulated_time(selected_day, previous_time)
+                        print(f"Set accumulated time to previous time: {previous_time:.2f} minutes")
+                    else:
+                        print(f"Already have accumulated time: {current_accumulated:.2f} minutes. Not setting to previous: {previous_time:.2f}")
 
                 # Clear existing annotations for files in this day
                 # (to avoid mixing with annotations from other days)
