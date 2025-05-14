@@ -697,15 +697,32 @@ def save_all_annotations(force_save=False):
                         # Get elapsed annotation time for this day in minutes
                         annotation_time_minutes = annotation_timer.get_elapsed_time_minutes(doy)
 
-                        # Save annotations to YAML file
+                        # Check if existing annotations file exists and load it to preserve data
+                        existing_data = {}
+                        if os.path.exists(annotations_file):
+                            try:
+                                with open(annotations_file, 'r') as f:
+                                    existing_data = yaml.safe_load(f) or {}
+                                print(f"Loaded existing annotations file to preserve data: {annotations_file}")
+                            except Exception as e:
+                                print(f"Error loading existing annotations: {str(e)}")
+
+                        # Create basic annotations data structure
                         annotations_data = {
-                            "created": datetime.datetime.now().isoformat(),
+                            "created": existing_data.get("created", datetime.datetime.now().isoformat()),
                             "day_of_year": doy,
                             "station": st.session_state.selected_station,
                             "instrument": st.session_state.selected_instrument,
                             "annotation_time_minutes": annotation_time_minutes,
                             "annotations": day_annotations
                         }
+                        
+                        # Preserve any additional fields that were in the existing file
+                        # (but don't overwrite the ones we specifically want to update)
+                        for key, value in existing_data.items():
+                            if key not in ["created", "day_of_year", "station", "instrument", 
+                                         "annotation_time_minutes", "annotations"]:
+                                annotations_data[key] = value
 
                         # Save using the utility function
                         save_yaml(annotations_data, annotations_file)

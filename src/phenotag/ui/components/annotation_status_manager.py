@@ -60,16 +60,31 @@ def save_status_to_l1_parent(base_dir, station_name, instrument_id, year, month,
         if str(year) not in status_data["annotations"]:
             status_data["annotations"][str(year)] = {}
         
-        if day not in status_data["annotations"][str(year)]:
-            status_data["annotations"][str(year)][day] = {}
+        # Get existing day data or create new
+        if day in status_data["annotations"][str(year)]:
+            # Preserve existing data and just update what's needed
+            day_data = status_data["annotations"][str(year)][day]
             
-        status_data["annotations"][str(year)][day] = {
-            "status": status,
-            "last_updated": datetime.now().isoformat()
-        }
+            # Only update the status field and last_updated
+            day_data["status"] = status
+            day_data["last_updated"] = datetime.now().isoformat()
+        else:
+            # Create new day entry
+            status_data["annotations"][str(year)][day] = {
+                "status": status,
+                "last_updated": datetime.now().isoformat()
+            }
         
-        # Update last modified timestamp
+        # Update last modified timestamp in metadata
         status_data["metadata"]["last_updated"] = datetime.now().isoformat()
+        
+        # Preserve other metadata fields
+        if "metadata" in status_data:
+            # Ensure these fields are always set correctly
+            status_data["metadata"]["station"] = station_name
+            status_data["metadata"]["instrument_id"] = instrument_id
+            
+            # Keep all other metadata fields
         
         # Create the directory if it doesn't exist
         os.makedirs(l1_parent_path, exist_ok=True)
