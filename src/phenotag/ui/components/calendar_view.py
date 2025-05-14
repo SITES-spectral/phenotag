@@ -84,6 +84,12 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
             if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
                 from phenotag.ui.components.annotation import save_all_annotations
                 save_all_annotations()
+                
+            # Pause the annotation timer when changing years
+            if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
+                from phenotag.ui.components.annotation_timer import annotation_timer
+                annotation_timer.pause_timer()
+                
             # Now clear the annotations
             st.session_state.image_annotations = {}
         # Auto-save when selection changes
@@ -377,6 +383,12 @@ def display_calendar_view(normalized_name, selected_instrument):
         if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
             from phenotag.ui.components.annotation import save_all_annotations
             save_all_annotations()
+            
+        # Pause the annotation timer when changing days
+        if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
+            from phenotag.ui.components.annotation_timer import annotation_timer
+            annotation_timer.pause_timer()
+            
         # Clear the annotations to force reloading
         st.session_state.image_annotations = {}
             

@@ -153,15 +153,18 @@ When working with annotations, the UI provides additional options:
 PhenoTag stores image annotations in YAML files alongside the images they describe:
 
 ```
-{data_dir}/{station}/phenocams/products/{instrument}/L1/{year}/{doy}/annotations.yaml
+{data_dir}/{station}/phenocams/products/{instrument}/L1/{year}/{doy}/annotations_{doy}.yaml
 ```
 
-The annotation system:
-- Automatically loads existing annotations when scanning images
-- Saves annotations when the user clicks "Save Annotations"
-- Stores quality flags and ROI information for each image
-- Persists annotations between sessions
-- Handles errors gracefully with user feedback
+The annotation system features:
+- Intelligent auto-save with 60-second interval for annotations
+- User-toggleable auto-save with visual countdown display
+- Automatic saving when changing days, instruments, or stations
+- Visual indicators of save status and unsaved changes
+- Time-stamped save history with clear success/failure feedback
+- Automatic loading of existing annotations when navigating to a day
+- Persistence of annotations across sessions
+- Clear status indicators showing the annotation state
 
 For detailed documentation, see `docs/annotation_system.md`.
 

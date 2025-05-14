@@ -25,6 +25,15 @@ def display_annotation_panel(current_filepath):
     """
     if not current_filepath:
         return
+        
+    # Get annotation timer to track activity
+    from phenotag.ui.components.annotation_timer import annotation_timer
+    
+    # Record user interaction
+    annotation_timer.record_interaction()
+    
+    # Check for inactivity (will pause the timer if needed)
+    annotation_timer.check_inactivity()
     
     # Create a unique key for this image
     image_key = current_filepath
@@ -202,13 +211,17 @@ def display_annotation_panel(current_filepath):
         # Set a flag to indicate annotations have changed but not yet saved to disk
         if 'unsaved_changes' not in st.session_state:
             st.session_state.unsaved_changes = True
+            
+        # Record interaction for annotation timer
+        from phenotag.ui.components.annotation_timer import annotation_timer
+        annotation_timer.record_interaction()
     
     # Add status indicator and save timestamp
     if 'last_save_time' not in st.session_state:
         st.session_state.last_save_time = None
     
     # Show save status
-    status_col, button_col1, button_col2 = st.columns([2, 1, 1])
+    status_col, time_col, button_col = st.columns([2, 1, 1])
     with status_col:
         if st.session_state.get('unsaved_changes', False):
             st.warning("You have unsaved changes", icon="⚠️")
@@ -240,8 +253,23 @@ def display_annotation_panel(current_filepath):
                 if seconds_left > 0:
                     st.caption(f"Auto-save in {seconds_left} seconds...")
     
+    # Show elapsed annotation time
+    with time_col:
+        if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
+            from phenotag.ui.components.annotation_timer import annotation_timer
+            current_day = st.session_state.annotation_timer_current_day
+            formatted_time = annotation_timer.get_formatted_time(current_day)
+            
+            st.metric(
+                "Annotation Time",
+                formatted_time,
+                help="Total time spent annotating this day (HH:MM:SS)",
+                delta=None,
+                delta_color="off"
+            )
+    
     # Add buttons for saving and resetting 
-    with button_col1:
+    with button_col:
         save_label = "Save Now" if st.session_state.get('unsaved_changes', False) else "Save All"
         if st.button(save_label, use_container_width=True):
             save_all_annotations()
@@ -250,8 +278,7 @@ def display_annotation_panel(current_filepath):
             if 'auto_save_time' in st.session_state:
                 st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
             st.rerun()
-    
-    with button_col2:
+        
         # Create a dropdown menu for reset options
         reset_option = st.selectbox(
             "Reset Options",
@@ -280,6 +307,12 @@ def save_all_annotations():
     saved_count = 0
 
     try:
+        # Get the annotation timer to record elapsed times
+        from phenotag.ui.components.annotation_timer import annotation_timer
+        
+        # Pause the timer to capture current elapsed time
+        annotation_timer.pause_timer()
+        
         # Group annotations by day (DOY)
         for img_path, annotations in st.session_state.image_annotations.items():
             if isinstance(img_path, str) and os.path.exists(img_path):
@@ -312,6 +345,9 @@ def save_all_annotations():
 
                         # Create annotations file for this day
                         annotations_file = os.path.join(l1_dir, f"annotations_{doy}.yaml")
+                        
+                        # Get elapsed annotation time for this day in minutes
+                        annotation_time_minutes = annotation_timer.get_elapsed_time_minutes(doy)
 
                         # Save annotations to YAML file
                         annotations_data = {
@@ -319,12 +355,13 @@ def save_all_annotations():
                             "day_of_year": doy,
                             "station": st.session_state.selected_station,
                             "instrument": st.session_state.selected_instrument,
+                            "annotation_time_minutes": annotation_time_minutes,
                             "annotations": day_annotations
                         }
 
                         # Save using the utility function
                         save_yaml(annotations_data, annotations_file)
-                        print(f"Saved annotations to {annotations_file}")
+                        print(f"Saved annotations to {annotations_file} (annotation time: {annotation_time_minutes:.2f} minutes)")
                         break
 
         # Update session state to indicate changes are saved
@@ -334,6 +371,10 @@ def save_all_annotations():
         # Update last save time
         import datetime
         st.session_state.last_save_time = datetime.datetime.now()
+        
+        # Restart timer for current day if it exists
+        if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
+            annotation_timer.start_timer(st.session_state.annotation_timer_current_day)
 
         if saved_count > 0:
             st.success(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!")
@@ -363,6 +404,12 @@ def load_day_annotations(selected_day, daily_filepaths):
         img_dir = os.path.dirname(daily_filepaths[0])
         annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
         
+        # Import the annotation timer
+        from phenotag.ui.components.annotation_timer import annotation_timer
+        
+        # Start the timer for this day
+        annotation_timer.start_timer(selected_day)
+        
         # Track if we already have annotations for this day's files
         existing_annotations = False
         for filepath in daily_filepaths:
@@ -382,6 +429,14 @@ def load_day_annotations(selected_day, daily_filepaths):
             with open(annotations_file, 'r') as f:
                 import yaml
                 annotation_data = yaml.safe_load(f)
+                
+                # Load previous annotation time if available
+                if 'annotation_time_minutes' in annotation_data:
+                    previous_time = annotation_data['annotation_time_minutes']
+                    print(f"Loading previous annotation time: {previous_time:.2f} minutes")
+                    
+                    # Set the previous time as accumulated time for this day
+                    annotation_timer.set_accumulated_time(selected_day, previous_time)
 
                 # Clear existing annotations for files in this day
                 # (to avoid mixing with annotations from other days)

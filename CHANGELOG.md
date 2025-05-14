@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added "Load Full Station Configuration" button to view complete station data from stations.yaml
 - New station configuration viewer with tabs for formatted and raw JSON views
 - Interactive structured display of stations, platforms, instruments, and available ROIs
+- **Intelligent annotation auto-save system with:**
+  - Automatic saves every 60 seconds when changes are detected
+  - User-configurable auto-save option with toggle
+  - Visual countdown timer for next auto-save
+  - Contextual save button that changes label based on save status
+  - Visual indicators showing saved/unsaved state with timestamps
+  - Automatic saving when navigating between days, instruments, or stations
 
 ### Changed
 - Further improved directory scanner to handle all day-of-year formats (padded, unpadded, and integer)
@@ -43,12 +50,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added detailed debugging output for calendar image counting
 - Improved image counting algorithm to support all path format variations
 - Enhanced day format handling with triple-format checking (padded, unpadded, and integer)
+- **Completely refactored the UI into modular components:**
+  - Split monolithic main.py into clean, reusable components
+  - Created component-based architecture with clear separation of concerns
+  - Moved ROI utilities to a dedicated module to avoid circular imports
+  - Integrated memory management directly into the main UI
+  - Moved calendar view to sidebar for better organization
+  - Improved annotation panel with status indicators and auto-save
+  - Enhanced layout with better use of containers and columns
 
 ### Fixed
 - Fixed critical issue with calendar not showing correct image counts for certain days
 - Resolved inconsistencies between the calendar view and dataframe display
 - Enhanced robustness for day-of-year format handling to prevent missing images
 - Fixed specific issue with day 090 (March 31st) not showing proper image counts in calendar
+- **Fixed annotation persistence issues:**
+  - Resolved issue with annotations not loading when returning to a previously annotated day
+  - Fixed inconsistent behavior when switching between instruments and stations
+  - Added robust state tracking for annotation loading
+  - Improved error handling during annotation loading and saving
+  - Added save-before-navigation to prevent data loss
+  - Enhanced debugging for annotation operations
 
 ## [0.2.0] - 2025-05-12
 
