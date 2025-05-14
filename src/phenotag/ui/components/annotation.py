@@ -296,21 +296,6 @@ def display_annotation_panel(current_filepath):
                                 print(f"[ROI_00 Settings] Reset apply flags after error")
                             except Exception:
                                 pass
-                    
-                    # If we're on ROI_00 and apply_to_all is enabled, show a message with details
-                    if apply_to_all:
-                        # Get list of affected ROIs
-                        affected_rois = [r for r in all_roi_names if r != "ROI_00"]
-                        roi_count = len(affected_rois)
-                        
-                        # Create a detailed message
-                        st.warning(
-                            f"These settings will be applied to {roi_count} other ROIs:\n"
-                            f"- Discard: {'Yes' if discard else 'No'}\n"
-                            f"- Snow Present: {'Yes' if snow_presence else 'No'}\n"
-                            f"- Flags: {len(selected_flags)} selected",
-                            icon="⚠️"
-                        )
                                                 
                 # Show current flags
                 if not selected_flags:
@@ -403,40 +388,6 @@ def display_annotation_panel(current_filepath):
                     flagged_rois = sum(1 for item in summary_data if item["Flag Count"] > 0)
                     st.metric("ROIs with Flags", flagged_rois,
                              delta=f"{100 * flagged_rois / total_rois:.1f}%" if total_rois > 0 else "0%")
-                
-                # Add flag statistics
-                st.write("### Flag Distribution")
-                
-                # Count occurrences of each flag
-                flag_counts = {}
-                for item in summary_data:
-                    flags_str = item["Flags"]
-                    if flags_str != "None":
-                        for flag_entry in flags_str.split(", "):
-                            # Extract just the flag name from "flag_name (category)"
-                            if " (" in flag_entry:
-                                flag_name = flag_entry.split(" (")[0].strip()
-                                category = flag_entry.split(" (")[1].replace(")", "").strip()
-                            else:
-                                flag_name = flag_entry
-                                category = "Unknown"
-                                
-                            if flag_name not in flag_counts:
-                                flag_counts[flag_name] = {"count": 0, "category": category}
-                            flag_counts[flag_name]["count"] += 1
-                
-                # Display flag counts as a bar chart if there are any flags
-                if flag_counts:
-                    flag_data = pd.DataFrame([
-                        {"Flag": f"{flag} ({info['category']})", "Count": info["count"]}
-                        for flag, info in flag_counts.items()
-                    ])
-                    
-                    flag_data = flag_data.sort_values("Count", ascending=False)
-                    
-                    st.bar_chart(flag_data, x="Flag", y="Count", use_container_width=True)
-                else:
-                    st.caption("No flags have been applied to any ROIs")
             else:
                 st.info("No annotation data available for summary")
         
