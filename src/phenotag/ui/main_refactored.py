@@ -6,7 +6,6 @@ integrating all UI components into a cohesive interface.
 """
 import streamlit as st
 import os
-import sys
 
 from phenotag.config import load_config_files
 from phenotag.ui.components.session_state import initialize_session_state, load_config, save_session_config
@@ -15,7 +14,6 @@ from phenotag.ui.components.scanner import handle_scan, should_auto_scan, setup_
 from phenotag.ui.components.calendar_view import display_calendar_view
 from phenotag.ui.components.image_display import display_images
 from phenotag.ui.components.annotation import display_annotation_panel, load_day_annotations
-from phenotag.ui.components.memory_management import memory_manager, memory_dashboard, MemoryTracker
 
 
 def load_instrument_rois():
@@ -69,7 +67,7 @@ def load_instrument_rois():
                             if rois:
                                 try:
                                     # Process the ROIs using our improved deserialize function
-                                    from phenotag.ui.components.roi_utils import deserialize_polygons
+                                    from phenotag.ui.components.annotation import deserialize_polygons
                                     processed_rois = deserialize_polygons(instrument_config['rois'])
 
                                     # Store the processed ROIs in session state
@@ -100,53 +98,28 @@ def main():
     """
     Main function to run the PhenoTag application.
     """
-    # Initialize memory monitoring
-    with MemoryTracker("App Initialization"):
-        # Start memory monitoring
-        memory_manager.start_memory_monitoring(
-            interval=30.0,  # Check every 30 seconds
-            threshold_mb=2000  # Alert if process exceeds 2GB
-        )
-        
-        # Get memory optimization flag from command line
-        memory_optimized = False
-        if len(sys.argv) > 1:
-            memory_optimized = "--memory-optimized" in sys.argv or "-m" in sys.argv
-            
-        # Store memory optimization setting in session state
-        if 'memory_optimized' not in st.session_state:
-            st.session_state.memory_optimized = memory_optimized
-            
-        # Initialize memory threshold
-        if 'memory_threshold_mb' not in st.session_state:
-            st.session_state.memory_threshold_mb = 1000  # Default 1GB
+    # Set page configuration with better defaults
+    st.set_page_config(
+        page_title="PhenoTag",
+        page_icon="🌿",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-        # Set page configuration with better defaults
-        st.set_page_config(
-            page_title="PhenoTag",
-            page_icon="🌿",
-            layout="wide",
-            initial_sidebar_state="expanded"
-        )
-        
-        # Load session config
-        session_config = load_config()
-        
-        # Initialize session state
-        initialize_session_state(session_config)
+    # Load session config
+    session_config = load_config()
     
-    # Memory dashboard will be added at the bottom of the sidebar later
+    # Initialize session state
+    initialize_session_state(session_config)
     
     # Render sidebar and get current selection
-    with MemoryTracker("Render Sidebar"):
-        normalized_name, selected_instrument = render_sidebar()
+    normalized_name, selected_instrument = render_sidebar()
     
     # Handle scanning if requested
     if hasattr(st.session_state, 'scan_requested') and st.session_state.scan_requested:
-        with MemoryTracker("Image Scanning"):
-            if handle_scan(normalized_name, selected_instrument):
-                # If scan was performed, no need to continue
-                return
+        if handle_scan(normalized_name, selected_instrument):
+            # If scan was performed, no need to continue
+            return
     
     # Check if we should auto-scan
     if should_auto_scan(normalized_name, selected_instrument):
@@ -159,73 +132,40 @@ def main():
     bottom_container = st.container()
     
     with top_container:
-        with MemoryTracker("Load Annotations"):
-            # Calendar view is now moved to the sidebar
-            
-            # Get current selections from session state
-            selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
-            selected_days = st.session_state.selected_days if 'selected_days' in st.session_state else []
-            selected_day = st.session_state.selected_day if 'selected_day' in st.session_state else None
-            
-            # Track the current selection for day/instrument/station changes
-            current_selection = {
-                'day': selected_day,
-                'instrument': selected_instrument,
-                'station': normalized_name,
-                'year': selected_year
-            }
-            
-            # Create a key to track if we've loaded annotations for this combination
-            selection_key = f"{normalized_name}_{selected_instrument}_{selected_year}_{selected_day}"
-            annotations_loaded_key = f"annotations_loaded_{selection_key}"
-            
-            # Check if we need to reload annotations (if selection changed)
-            if annotations_loaded_key not in st.session_state:
-                st.session_state[annotations_loaded_key] = False
-                
-            # Display a header with the current selection if available
-            if selected_year and selected_day:
-                st.subheader(f"Viewing images for Year {selected_year}, Day {selected_day}")
-                
-                # Show selection range if multiple days are selected
-                if selected_days and len(selected_days) > 0:
-                    from phenotag.ui.calendar_component import format_day_range
-                    selection_text = format_day_range(selected_days, int(selected_year))
-                    st.write(f"Selected range: {selection_text}")
+        # Display calendar view
+        selected_year, selected_days = display_calendar_view(normalized_name, selected_instrument)
+        
+        # Get current day from session state
+        selected_day = st.session_state.selected_day if 'selected_day' in st.session_state else None
+        
+        # Load annotations for the current day
+        if selected_day:
+            # Get file paths for the day to load annotations
+            from phenotag.ui.components.image_display import get_filtered_file_paths
+            daily_filepaths = get_filtered_file_paths(
+                normalized_name, 
+                selected_instrument, 
+                selected_year, 
+                selected_day
+            )
             
             # Load annotations for the current day
-            if selected_day:
-                # Get file paths for the day to load annotations
-                from phenotag.ui.components.image_display import get_filtered_file_paths
-                daily_filepaths = get_filtered_file_paths(
-                    normalized_name, 
-                    selected_instrument, 
-                    selected_year, 
-                    selected_day
-                )
-                
-                # Always attempt to load annotations
-                load_day_annotations(selected_day, daily_filepaths)
-                
-                # Mark as loaded
-                st.session_state[annotations_loaded_key] = True
+            load_day_annotations(selected_day, daily_filepaths)
     
     with center_container:
-        with MemoryTracker("Image Display"):
-            # Display images with annotation panel
-            displayed_filepath = display_images(
-                normalized_name,
-                selected_instrument,
-                selected_year,
-                selected_day,
-                selected_days
-            )
+        # Display images with annotation panel
+        displayed_filepath = display_images(
+            normalized_name,
+            selected_instrument,
+            selected_year,
+            selected_day,
+            selected_days
+        )
     
     with bottom_container:
-        with MemoryTracker("Annotation Panel"):
-            # Display annotation panel for the current image
-            if 'current_filepath' in st.session_state and st.session_state.current_filepath:
-                display_annotation_panel(st.session_state.current_filepath)
+        # Display annotation panel for the current image
+        if 'current_filepath' in st.session_state and st.session_state.current_filepath:
+            display_annotation_panel(st.session_state.current_filepath)
     
     # Store important data in session state
     if selected_instrument:
@@ -235,14 +175,7 @@ def main():
         # Try to load ROIs if showing overlays but not yet loaded
         if (st.session_state.get('show_roi_overlays', False) and 
             ('instrument_rois' not in st.session_state or not st.session_state.instrument_rois)):
-            with MemoryTracker("Load ROIs"):
-                load_instrument_rois()
-                
-    # Check memory usage and reclaim if necessary
-    if memory_manager.check_memory_threshold():
-        memory_manager.clear_memory()
-        
-    # Memory information is now displayed in an expander at the bottom of the sidebar
+            load_instrument_rois()
 
 
 if __name__ == "__main__":

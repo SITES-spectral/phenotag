@@ -50,13 +50,12 @@ def main():
     
     # Handle commands
     if args.command == "run":
-        # Get the path to the Streamlit UI
-        # Use absolute path to ensure it always works
+        # Always use the main app path - memory optimization is handled within the app
+        app_path = Path(__file__).parent.parent / "ui" / "main.py"
+        
+        # Print memory optimization status
         if args.memory_optimized:
-            app_path = Path(__file__).parent.parent / "ui" / "main_with_memory.py"
-            print("Using memory-optimized version of the application")
-        else:
-            app_path = Path(__file__).parent.parent / "ui" / "main.py"
+            print("Using memory-optimized mode")
         
         # Print the path for debugging
         print(f"Starting Streamlit with app path: {app_path}")
@@ -82,6 +81,12 @@ def main():
             "--server.port", str(args.port),
             "--server.address", args.host
         ]
+        
+        # Pass memory optimization as a command-line argument to the Python app
+        # (Streamlit doesn't recognize custom flags)
+        if args.memory_optimized:
+            cmd.append("--")  # Delimiter for passing arguments to the target script
+            cmd.append("--memory-optimized")
         
         if args.browser:
             cmd.append("--server.headless")
