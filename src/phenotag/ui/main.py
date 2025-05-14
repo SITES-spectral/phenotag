@@ -249,6 +249,10 @@ def main():
         st.session_state.selected_month = None
     if 'image_data' not in st.session_state:
         st.session_state.image_data = {}
+    if 'current_filepath' not in st.session_state:
+        st.session_state.current_filepath = None
+    else:
+        current_filepath = st.session_state.current_filepath
         
     # Automatic scanning is handled after sidebar creation
     
@@ -1277,6 +1281,8 @@ def main():
             # Only display image data if we have both a year and a day selected
             if (selected_year and selected_year in image_data and
                 'selected_day' in st.session_state and st.session_state.selected_day in image_data[selected_year]):
+                
+                # ROI controls have been moved to the left container
 
                 selected_day = st.session_state.selected_day
 
@@ -1286,10 +1292,11 @@ def main():
                 # Make sure we have file paths before attempting to display them
                 if daily_filepaths:
                     with left_col:
-                        # Add instructional text for users
-                        st.info("👇 Select a time below to view the corresponding image")
-
-                        # Add ROI toggle at the top of the left column with session state persistence
+                        # Add ROI toggle and controls at the top of the left column
+                        st.divider()
+                        st.write("**ROI Controls**")
+                        
+                        # Add ROI toggle with session state persistence
                         if 'show_roi_overlays' not in st.session_state:
                             st.session_state.show_roi_overlays = True
 
@@ -1312,10 +1319,11 @@ def main():
 
                             # Force a rerun to update the UI
                             st.rerun()
-
+                        
                         # Display ROI legend if we have ROIs loaded AND the overlay toggle is on
                         if 'instrument_rois' in st.session_state and st.session_state.instrument_rois and st.session_state.get('show_roi_overlays', False):
                             st.markdown("#### ROI Legend")
+                            
                             # Create a simple table to display ROI names and colors
                             legend_data = []
                             for roi_name, roi_info in st.session_state.instrument_rois.items():
@@ -1333,20 +1341,339 @@ def main():
 
                             # Display the legend if we have data
                             if legend_data:
-                                # Convert to DataFrame for display
-                                legend_df = pd.DataFrame(legend_data)
-                                # Use st.markdown with HTML for better styling
-                                for _, row in legend_df.iterrows():
+                                # Create a simple vertical list of ROIs with colors
+                                for item in legend_data:
                                     st.markdown(
                                         f'<div style="display: flex; align-items: center; margin-bottom: 5px;">'
-                                        f'<div style="margin-right: 10px;">{row["Color"]}</div>'
-                                        f'<div>{row["ROI"]}</div>'
+                                        f'<div style="margin-right: 10px;">{item["Color"]}</div>'
+                                        f'<div>{item["ROI"]}</div>'
                                         f'</div>',
                                         unsafe_allow_html=True
                                     )
+                        
+                        # Add batch update controls
+                        st.divider()
+                        # Create a key for the current image path
+                        image_key = current_filepath if current_filepath else "default"
 
-                                # Add spacing after the legend
-                                st.write("")
+                        st.write("**Batch Update Controls**")
+                        st.caption("Use these controls to set flags for all ROIs at once")
+                        
+                        # All ROIs: discard checkbox
+                        if 'all_discard' not in st.session_state:
+                            st.session_state.all_discard = False
+                        
+                        all_discard = st.checkbox(
+                            "All ROIs: discard",
+                            value=st.session_state.all_discard,
+                            key="all_discard_checkbox",
+                            help="Set discard flag for all ROIs in this image")
+                        
+                        # Update session state when checkbox changes
+                        if all_discard != st.session_state.all_discard:
+                            st.session_state.all_discard = all_discard
+                        
+                        # All ROIs: snow checkbox
+                        if 'all_snow' not in st.session_state:
+                            st.session_state.all_snow = False
+                        
+                        all_snow = st.checkbox(
+                            "All ROIs: snow",
+                            value=st.session_state.all_snow,
+                            key="all_snow_checkbox",
+                            help="Set snow presence flag for all ROIs in this image")
+                        
+                        # Update session state when checkbox changes
+                        if all_snow != st.session_state.all_snow:
+                            st.session_state.all_snow = all_snow
+                        
+                        # All ROIs: flags checkbox
+                        if 'all_flags' not in st.session_state:
+                            st.session_state.all_flags = False
+                        
+                        all_flags = st.checkbox(
+                            "All ROIs: flags",
+                            value=st.session_state.all_flags,
+                            key="all_flags_checkbox",
+                            help="Set quality flag for all ROIs in this image")
+                        
+                        # Update session state when checkbox changes
+                        if all_flags != st.session_state.all_flags:
+                            st.session_state.all_flags = all_flags
+                        
+                        # Button to apply batch updates
+                        if st.button("Apply to All ROIs", use_container_width=True):
+                            if image_key in st.session_state.image_annotations:
+                                # Update all rows in the annotations
+                                for row in st.session_state.image_annotations[image_key]:
+                                    row['discard'] = st.session_state.all_discard
+                                    row['snow_presence'] = st.session_state.all_snow
+                                    row['has_flags'] = st.session_state.all_flags
+                                # Force a rerun to update the data editor
+                                st.rerun()
+                        
+                        # Show ROI annotation editor when an image is selected
+                        if 'selected_day' in st.session_state and st.session_state.selected_day:
+                            st.divider()
+                            st.subheader("ROI Annotations")
+
+                            # Get currently selected image filepath
+                            current_filepath = None
+                            if 'current_filepath' not in st.session_state:
+                                st.session_state.current_filepath = current_filepath
+                            
+
+                            if 'event' in locals() and event and event.selection and event.selection.rows:
+                                try:
+                                    index = int(event.selection.rows[0])
+                                    if 0 <= index < len(daily_filepaths):
+                                        current_filepath = daily_filepaths[index]
+                                        st.session_state.current_filepath = current_filepath
+                                except:
+                                    pass
+
+                            # Get list of ROI names from loaded ROIs
+                            roi_names = []
+                            if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
+                                roi_names = list(st.session_state.instrument_rois.keys())
+
+                            # Create a list of all quality flags from flags.yaml
+                            flag_options = []
+                            for flag_key, flag_data in config.get('flags', {}).items():
+                                # Skip any non-flag entries
+                                if not isinstance(flag_data, dict) or 'category' not in flag_data:
+                                    continue
+                                # Create a nice display name with category
+                                display_name = f"{flag_key[6:] if flag_key.startswith('iflag_') else flag_key} ({flag_data.get('category', 'Other')})"
+                                flag_options.append({"value": flag_key, "label": display_name})
+
+                            # Sort flags by category for better organization
+                            flag_options.sort(key=lambda x: x['label'])
+
+                            # Initialize annotations dictionary if not exists
+                            if 'image_annotations' not in st.session_state:
+                                st.session_state.image_annotations = {}
+
+                                # Try to load existing YAML annotations for the current day
+                                if 'selected_day' in st.session_state and st.session_state.selected_day:
+                                    try:
+                                        # Construct the path to the annotations file for this day
+                                        selected_day = st.session_state.selected_day
+
+                                        # For each image path in daily_filepaths, check if annotations file exists
+                                        if daily_filepaths:
+                                            img_dir = os.path.dirname(daily_filepaths[0])
+                                            annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
+
+                                            # If annotations file exists, load it
+                                            if os.path.exists(annotations_file):
+                                                with open(annotations_file, 'r') as f:
+                                                    import yaml
+                                                    annotation_data = yaml.safe_load(f)
+
+                                                    if 'annotations' in annotation_data:
+                                                        # Convert the loaded annotations to our format
+                                                        for img_name, img_annotations in annotation_data['annotations'].items():
+                                                            # Find the full path for this filename
+                                                            for filepath in daily_filepaths:
+                                                                if os.path.basename(filepath) == img_name:
+                                                                    # Store annotations using full path as key
+                                                                    st.session_state.image_annotations[filepath] = img_annotations
+                                                                    break
+
+                                                # Show notification that annotations were loaded
+                                                st.toast(f"Loaded existing annotations for day {selected_day}", icon="✅")
+                                    except Exception as e:
+                                        print(f"Error loading annotations: {e}")
+                                        # Just log the error, don't block the UI flow
+
+                            # Check if day changed, and if so, load annotations for the new day
+                            current_day = st.session_state.selected_day
+                            if 'last_annotation_day' not in st.session_state or st.session_state.last_annotation_day != current_day:
+                                # Day changed, check for existing annotations
+                                try:
+                                    if daily_filepaths:
+                                        img_dir = os.path.dirname(daily_filepaths[0])
+                                        annotations_file = os.path.join(img_dir, f"annotations_{current_day}.yaml")
+
+                                        # If annotations file exists, load it
+                                        if os.path.exists(annotations_file):
+                                            with open(annotations_file, 'r') as f:
+                                                import yaml
+                                                annotation_data = yaml.safe_load(f)
+
+                                                # Clear existing annotations for files in this day
+                                                # (to avoid mixing with annotations from other days)
+                                                for filepath in daily_filepaths:
+                                                    if filepath in st.session_state.image_annotations:
+                                                        del st.session_state.image_annotations[filepath]
+
+                                                if 'annotations' in annotation_data:
+                                                    # Convert the loaded annotations to our format
+                                                    for img_name, img_annotations in annotation_data['annotations'].items():
+                                                        # Find the full path for this filename
+                                                        for filepath in daily_filepaths:
+                                                            if os.path.basename(filepath) == img_name:
+                                                                # Store annotations using full path as key
+                                                                st.session_state.image_annotations[filepath] = img_annotations
+                                                                break
+
+                                            # Show notification that annotations were loaded
+                                            st.toast(f"Loaded annotations for day {current_day}", icon="✅")
+                                except Exception as e:
+                                    print(f"Error loading annotations for day change: {e}")
+
+                            # Remember current day for next time
+                            st.session_state.last_annotation_day = current_day
+
+                        
+                            # Create or retrieve annotations for current image
+                            if image_key not in st.session_state.image_annotations:
+                                # Create default annotations for this image
+                                annotation_data = [
+                                    {
+                                        "roi_name": "ROI_00",  #(Default - Full Image)
+                                        "discard": False,
+                                        "snow_presence": False,
+                                        "has_flags": False,  # Empty string for no selection
+                                    }
+                                ]
+
+                                # Add a row for each custom ROI
+                                for roi_name in roi_names:
+                                    annotation_data.append({
+                                        "roi_name": roi_name,
+                                        "discard": False,
+                                        "snow_presence": False,
+                                        "has_flags": False,  # Empty string for no selection
+                                    })
+                            else:
+                                # Use existing annotations
+                                annotation_data = st.session_state.image_annotations[image_key]
+
+                            # Convert to DataFrame
+                            annotation_df = pd.DataFrame(annotation_data)
+
+                            # The batch controls have been moved to the left container
+                            
+                            # Show the data editor with custom configuration
+                            edited_annotations = st.data_editor(
+                                annotation_df,
+                                column_config={
+                                    "roi_name": st.column_config.TextColumn(
+                                        "ROI Name",
+                                        help="Region of Interest name",
+                                        width="medium",
+                                        disabled=True
+                                    ),
+                                    "discard": st.column_config.CheckboxColumn(
+                                        "Discard",
+                                        help="Mark this ROI as not suitable for analysis",
+                                        width="small",
+                                    ),
+                                    "snow_presence": st.column_config.CheckboxColumn(
+                                        "Snow Present",
+                                        help="Mark if snow is present in this ROI",
+                                        width="small",
+                                    ),
+                                    "has_flags": st.column_config.CheckboxColumn(
+                                        "Quality Flag",
+                                        help="Mark if a quality flag is present for this ROI",
+                                        width="large",
+                                        # options=[option["label"] for option in flag_options],
+                                    ),
+                                },
+                                hide_index=True,
+                                num_rows="dynamic",
+                                key=f"roi_annotations_{image_key}",
+                                use_container_width=True
+                            )
+
+                            # Save the edited annotations back to session state
+                            st.session_state.image_annotations[image_key] = edited_annotations.to_dict('records')
+
+                            # Display current annotation status
+                            if current_filepath:
+                                st.caption(f"Annotating: {os.path.basename(current_filepath)}")
+
+                            # Add buttons for saving annotations
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                if st.button("Save All Annotations", use_container_width=True):
+                                    # Organize annotations by day for better storage
+                                    annotations_by_day = {}
+                                    saved_count = 0
+
+                                    try:
+                                        # Group annotations by day (DOY)
+                                        for img_path, annotations in st.session_state.image_annotations.items():
+                                            if isinstance(img_path, str) and os.path.exists(img_path):
+                                                # Extract day of year from the filename or path
+                                                img_dir = os.path.dirname(img_path)
+                                                # The DOY is typically the directory name in the L1 structure
+                                                doy = os.path.basename(img_dir)
+
+                                                # Skip if we can't determine the DOY
+                                                if not doy.isdigit():
+                                                    continue
+
+                                                # Initialize dict for this DOY if not exists
+                                                if doy not in annotations_by_day:
+                                                    annotations_by_day[doy] = {}
+
+                                                # Store annotations for this image
+                                                img_filename = os.path.basename(img_path)
+                                                annotations_by_day[doy][img_filename] = annotations
+                                                saved_count += 1
+
+                                        # Save annotations by day
+                                        for doy, day_annotations in annotations_by_day.items():
+                                            if day_annotations:
+                                                # Determine the directory path - use the L1 directory of the first image in this day
+                                                for img_path in st.session_state.image_annotations:
+                                                    if isinstance(img_path, str) and os.path.exists(img_path) and doy == os.path.basename(os.path.dirname(img_path)):
+                                                        # L1 directory is the parent of the image file
+                                                        l1_dir = os.path.dirname(img_path)
+
+                                                        # Create annotations file for this day
+                                                        annotations_file = os.path.join(l1_dir, f"annotations_{doy}.yaml")
+
+                                                        # Save annotations to YAML file
+                                                        annotations_data = {
+                                                            "created": datetime.datetime.now().isoformat(),
+                                                            "day_of_year": doy,
+                                                            "station": st.session_state.selected_station,
+                                                            "instrument": st.session_state.selected_instrument,
+                                                            "annotations": day_annotations
+                                                        }
+
+                                                        # Save using the utility function
+                                                        save_yaml(annotations_data, annotations_file)
+                                                        print(f"Saved annotations to {annotations_file}")
+                                                        break
+
+                                        if saved_count > 0:
+                                            st.success(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!")
+                                        else:
+                                            st.warning("No valid images to save annotations for.")
+                                    except Exception as e:
+                                        st.error(f"Error saving annotations: {str(e)}")
+
+                            with col2:
+                                if st.button("Reset Current", use_container_width=True):
+                                    # Remove annotations for current image
+                                    if image_key in st.session_state.image_annotations:
+                                        del st.session_state.image_annotations[image_key]
+                                    st.rerun()
+
+                            with col3:
+                                if st.button("Reset All", use_container_width=True):
+                                    # Clear all annotations
+                                    st.session_state.image_annotations = {}
+                                    st.rerun()
+
+
+                        # Add a divider
 
                         # Create a DataFrame with filenames, paths, and timestamps
                         filenames = [os.path.basename(path) for path in daily_filepaths]
@@ -1473,7 +1800,7 @@ def main():
                                 processor = ImageProcessor()
                                 if processor.load_image(filepath):
                                     # Check if we have instrument ROIs loaded
-                                    if show_rois:
+                                    if st.session_state.get('show_roi_overlays', False):
                                         if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
                                             # Use the instrument-specific ROIs from the stations configuration
                                             # Debug the ROI structure
@@ -1569,7 +1896,7 @@ def main():
 
                                         # Add image caption with ROI status
                                         caption = os.path.basename(filepath)
-                                        if show_rois:
+                                        if st.session_state.get('show_roi_overlays', False):
                                             caption += " (with ROI overlays)"
 
                                         # Display the image
@@ -1592,390 +1919,8 @@ def main():
 
         # Bottom container for additional information
         with bottom_container:
-            # Show ROI annotation editor when an image is selected
-            if 'selected_day' in st.session_state and st.session_state.selected_day:
-                st.divider()
-                st.subheader("ROI Annotations")
-
-                # Get currently selected image filepath
-                current_filepath = None
-                if 'event' in locals() and event and event.selection and event.selection.rows:
-                    try:
-                        index = int(event.selection.rows[0])
-                        if 0 <= index < len(daily_filepaths):
-                            current_filepath = daily_filepaths[index]
-                    except:
-                        pass
-
-                # Get list of ROI names from loaded ROIs
-                roi_names = []
-                if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
-                    roi_names = list(st.session_state.instrument_rois.keys())
-
-                # Create a list of all quality flags from flags.yaml
-                flag_options = []
-                for flag_key, flag_data in config.get('flags', {}).items():
-                    # Skip any non-flag entries
-                    if not isinstance(flag_data, dict) or 'category' not in flag_data:
-                        continue
-                    # Create a nice display name with category
-                    display_name = f"{flag_key[6:] if flag_key.startswith('iflag_') else flag_key} ({flag_data.get('category', 'Other')})"
-                    flag_options.append({"value": flag_key, "label": display_name})
-
-                # Sort flags by category for better organization
-                flag_options.sort(key=lambda x: x['label'])
-
-                # Initialize annotations dictionary if not exists
-                if 'image_annotations' not in st.session_state:
-                    st.session_state.image_annotations = {}
-
-                    # Try to load existing YAML annotations for the current day
-                    if 'selected_day' in st.session_state and st.session_state.selected_day:
-                        try:
-                            # Construct the path to the annotations file for this day
-                            selected_day = st.session_state.selected_day
-
-                            # For each image path in daily_filepaths, check if annotations file exists
-                            if daily_filepaths:
-                                img_dir = os.path.dirname(daily_filepaths[0])
-                                annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
-
-                                # If annotations file exists, load it
-                                if os.path.exists(annotations_file):
-                                    with open(annotations_file, 'r') as f:
-                                        import yaml
-                                        annotation_data = yaml.safe_load(f)
-
-                                        if 'annotations' in annotation_data:
-                                            # Convert the loaded annotations to our format
-                                            for img_name, img_annotations in annotation_data['annotations'].items():
-                                                # Find the full path for this filename
-                                                for filepath in daily_filepaths:
-                                                    if os.path.basename(filepath) == img_name:
-                                                        # Store annotations using full path as key
-                                                        st.session_state.image_annotations[filepath] = img_annotations
-                                                        break
-
-                                    # Show notification that annotations were loaded
-                                    st.toast(f"Loaded existing annotations for day {selected_day}", icon="✅")
-                        except Exception as e:
-                            print(f"Error loading annotations: {e}")
-                            # Just log the error, don't block the UI flow
-
-                # Check if day changed, and if so, load annotations for the new day
-                current_day = st.session_state.selected_day
-                if 'last_annotation_day' not in st.session_state or st.session_state.last_annotation_day != current_day:
-                    # Day changed, check for existing annotations
-                    try:
-                        if daily_filepaths:
-                            img_dir = os.path.dirname(daily_filepaths[0])
-                            annotations_file = os.path.join(img_dir, f"annotations_{current_day}.yaml")
-
-                            # If annotations file exists, load it
-                            if os.path.exists(annotations_file):
-                                with open(annotations_file, 'r') as f:
-                                    import yaml
-                                    annotation_data = yaml.safe_load(f)
-
-                                    # Clear existing annotations for files in this day
-                                    # (to avoid mixing with annotations from other days)
-                                    for filepath in daily_filepaths:
-                                        if filepath in st.session_state.image_annotations:
-                                            del st.session_state.image_annotations[filepath]
-
-                                    if 'annotations' in annotation_data:
-                                        # Convert the loaded annotations to our format
-                                        for img_name, img_annotations in annotation_data['annotations'].items():
-                                            # Find the full path for this filename
-                                            for filepath in daily_filepaths:
-                                                if os.path.basename(filepath) == img_name:
-                                                    # Store annotations using full path as key
-                                                    st.session_state.image_annotations[filepath] = img_annotations
-                                                    break
-
-                                # Show notification that annotations were loaded
-                                st.toast(f"Loaded annotations for day {current_day}", icon="✅")
-                    except Exception as e:
-                        print(f"Error loading annotations for day change: {e}")
-
-                # Remember current day for next time
-                st.session_state.last_annotation_day = current_day
-
-                # Create a key for the current image path
-                image_key = current_filepath if current_filepath else "default"
-
-                # Create or retrieve annotations for current image
-                if image_key not in st.session_state.image_annotations:
-                    # Create default annotations for this image
-                    annotation_data = [
-                        {
-                            "roi_name": "ROI_00",  #(Default - Full Image)
-                            "discard": False,
-                            "snow_presence": False,
-                            "has_flags": False,  # Empty string for no selection
-                        }
-                    ]
-
-                    # Add a row for each custom ROI
-                    for roi_name in roi_names:
-                        annotation_data.append({
-                            "roi_name": roi_name,
-                            "discard": False,
-                            "snow_presence": False,
-                            "has_flags": False,  # Empty string for no selection
-                        })
-                else:
-                    # Use existing annotations
-                    annotation_data = st.session_state.image_annotations[image_key]
-
-                # Convert to DataFrame
-                annotation_df = pd.DataFrame(annotation_data)
-
-                # Create a container for batch controls above the data editor
-                batch_control_container = st.container()
-                with batch_control_container:
-                    # Add a visual divider and header for the batch controls
-                    st.divider()
-                    st.write("### Batch Update Controls")
-                    st.caption("Use these controls to set flags for all ROIs at once")
-                    # Use 3 columns for the batch controls
-                    batch_col1, batch_col2, batch_col3 = st.columns(3)
-                    
-                    with batch_col1:
-                        if 'all_discard' not in st.session_state:
-                            st.session_state.all_discard = False
-                        
-                        all_discard = st.checkbox(
-                            "All ROIs: discard",
-                            value=st.session_state.all_discard,
-                            key="all_discard_checkbox",
-                            help="Set discard flag for all ROIs in this image")
-                        
-                        # Update session state when checkbox changes
-                        if all_discard != st.session_state.all_discard:
-                            st.session_state.all_discard = all_discard
-                    
-                    with batch_col2:
-                        if 'all_snow' not in st.session_state:
-                            st.session_state.all_snow = False
-                        
-                        all_snow = st.checkbox(
-                            "All ROIs: snow",
-                            value=st.session_state.all_snow,
-                            key="all_snow_checkbox",
-                            help="Set snow presence flag for all ROIs in this image")
-                        
-                        # Update session state when checkbox changes
-                        if all_snow != st.session_state.all_snow:
-                            st.session_state.all_snow = all_snow
-                    
-                    with batch_col3:
-                        if 'all_flags' not in st.session_state:
-                            st.session_state.all_flags = False
-                        
-                        all_flags = st.checkbox(
-                            "All ROIs: flags",
-                            value=st.session_state.all_flags,
-                            key="all_flags_checkbox",
-                            help="Set quality flag for all ROIs in this image")
-                        
-                        # Update session state when checkbox changes
-                        if all_flags != st.session_state.all_flags:
-                            st.session_state.all_flags = all_flags
-                    
-                    # Button to apply batch updates
-                    if st.button("Apply to All ROIs", use_container_width=True):
-                        if image_key in st.session_state.image_annotations:
-                            # Update all rows in the annotations
-                            for row in st.session_state.image_annotations[image_key]:
-                                row['discard'] = st.session_state.all_discard
-                                row['snow_presence'] = st.session_state.all_snow
-                                row['has_flags'] = st.session_state.all_flags
-                            # Force a rerun to update the data editor
-                            st.rerun()
-                
-                # Show the data editor with custom configuration
-                edited_annotations = st.data_editor(
-                    annotation_df,
-                    column_config={
-                        "roi_name": st.column_config.TextColumn(
-                            "ROI Name",
-                            help="Region of Interest name",
-                            width="medium",
-                            disabled=True
-                        ),
-                        "discard": st.column_config.CheckboxColumn(
-                            "Discard",
-                            help="Mark this ROI as not suitable for analysis",
-                            width="small",
-                        ),
-                        "snow_presence": st.column_config.CheckboxColumn(
-                            "Snow Present",
-                            help="Mark if snow is present in this ROI",
-                            width="small",
-                        ),
-                        "has_flags": st.column_config.CheckboxColumn(
-                            "Quality Flag",
-                            help="Mark if a quality flag is present for this ROI",
-                            width="large",
-                            # options=[option["label"] for option in flag_options],
-                        ),
-                    },
-                    hide_index=True,
-                    num_rows="dynamic",
-                    key=f"roi_annotations_{image_key}",
-                    use_container_width=True
-                )
-
-                # Save the edited annotations back to session state
-                st.session_state.image_annotations[image_key] = edited_annotations.to_dict('records')
-
-                # Display current annotation status
-                if current_filepath:
-                    st.caption(f"Annotating: {os.path.basename(current_filepath)}")
-
-                # Add buttons for saving annotations
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    if st.button("Save All Annotations", use_container_width=True):
-                        # Organize annotations by day for better storage
-                        annotations_by_day = {}
-                        saved_count = 0
-
-                        try:
-                            # Group annotations by day (DOY)
-                            for img_path, annotations in st.session_state.image_annotations.items():
-                                if isinstance(img_path, str) and os.path.exists(img_path):
-                                    # Extract day of year from the filename or path
-                                    img_dir = os.path.dirname(img_path)
-                                    # The DOY is typically the directory name in the L1 structure
-                                    doy = os.path.basename(img_dir)
-
-                                    # Skip if we can't determine the DOY
-                                    if not doy.isdigit():
-                                        continue
-
-                                    # Initialize dict for this DOY if not exists
-                                    if doy not in annotations_by_day:
-                                        annotations_by_day[doy] = {}
-
-                                    # Store annotations for this image
-                                    img_filename = os.path.basename(img_path)
-                                    annotations_by_day[doy][img_filename] = annotations
-                                    saved_count += 1
-
-                            # Save annotations by day
-                            for doy, day_annotations in annotations_by_day.items():
-                                if day_annotations:
-                                    # Determine the directory path - use the L1 directory of the first image in this day
-                                    for img_path in st.session_state.image_annotations:
-                                        if isinstance(img_path, str) and os.path.exists(img_path) and doy == os.path.basename(os.path.dirname(img_path)):
-                                            # L1 directory is the parent of the image file
-                                            l1_dir = os.path.dirname(img_path)
-
-                                            # Create annotations file for this day
-                                            annotations_file = os.path.join(l1_dir, f"annotations_{doy}.yaml")
-
-                                            # Save annotations to YAML file
-                                            annotations_data = {
-                                                "created": datetime.datetime.now().isoformat(),
-                                                "day_of_year": doy,
-                                                "station": st.session_state.selected_station,
-                                                "instrument": st.session_state.selected_instrument,
-                                                "annotations": day_annotations
-                                            }
-
-                                            # Save using the utility function
-                                            save_yaml(annotations_data, annotations_file)
-                                            print(f"Saved annotations to {annotations_file}")
-                                            break
-
-                            if saved_count > 0:
-                                st.success(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!")
-                            else:
-                                st.warning("No valid images to save annotations for.")
-                        except Exception as e:
-                            st.error(f"Error saving annotations: {str(e)}")
-
-                with col2:
-                    if st.button("Reset Current", use_container_width=True):
-                        # Remove annotations for current image
-                        if image_key in st.session_state.image_annotations:
-                            del st.session_state.image_annotations[image_key]
-                        st.rerun()
-
-                with col3:
-                    if st.button("Reset All", use_container_width=True):
-                        # Clear all annotations
-                        st.session_state.image_annotations = {}
-                        st.rerun()
-
-            # Add station configuration visualization in a more compact form
-            st.divider()
-            st.subheader("Station Information")
-
-            # Button to load all station data from stations.yaml
-            if selected_station:
-                normalized_name = station_name_to_normalized.get(selected_station)
-                if normalized_name:
-                    # Load station button with feedback
-                    if st.button("📋 Load Full Station Configuration", key="load_station_config"):
-                        with st.spinner(f"Loading configuration for {selected_station}..."):
-                            try:
-                                # Get the full station configuration from stations.yaml
-                                config = load_config_files()
-                                stations_config = config.get('stations', {}).get('stations', {})
-
-                                if normalized_name in stations_config:
-                                    station_data = stations_config[normalized_name]
-
-                                    # Store in session state for display
-                                    st.session_state.station_config = station_data
-
-                                    # Success message
-                                    st.success(f"Loaded configuration for {selected_station}")
-                                else:
-                                    st.error(f"Station {normalized_name} not found in configuration")
-                            except Exception as e:
-                                st.error(f"Error loading station configuration: {e}")
-
-                    # Display the station configuration as JSON if available
-                    if hasattr(st.session_state, 'station_config'):
-                        with st.expander("Station Configuration Details", expanded=True):
-                            # Create tabs for different views
-                            tab1, tab2 = st.tabs(["Formatted View", "Raw JSON"])
-
-                            with tab1:
-                                # Show a more structured view with key information
-                                st.write("### Station Information")
-                                st.write(f"**Name:** {st.session_state.station_config.get('name')}")
-                                st.write(f"**Acronym:** {st.session_state.station_config.get('acronym')}")
-                                st.write(f"**Normalized Name:** {st.session_state.station_config.get('normalized_name')}")
-
-                                # Show available platforms
-                                if 'phenocams' in st.session_state.station_config and 'platforms' in st.session_state.station_config['phenocams']:
-                                    platforms = st.session_state.station_config['phenocams']['platforms']
-                                    st.write(f"### Available Platforms: {list(platforms.keys())}")
-
-                                    # Show instruments for each platform
-                                    for platform, platform_data in platforms.items():
-                                        if 'instruments' in platform_data:
-                                            instruments = platform_data['instruments']
-                                            st.write(f"#### Platform {platform} Instruments:")
-
-                                            for instrument_id, instrument_info in instruments.items():
-                                                st.write(f"- **{instrument_id}**")
-                                                # Show ROIs if available
-                                                if 'rois' in instrument_info:
-                                                    rois = list(instrument_info['rois'].keys())
-                                                    st.write(f"  - ROIs: {', '.join(rois)}")
-
-                            with tab2:
-                                # Show raw JSON
-                                st.json(st.session_state.station_config)
-            else:
-                st.info("Select a station to view its configuration")
-
+            pass
+            
         # Store important data in session state
     if selected_station:
         # Store station info in session state
