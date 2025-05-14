@@ -67,7 +67,6 @@ PhenoTag features an enhanced annotation saving system that includes:
 
 3. **Force Save on Context Changes**:
    - Annotations are automatically saved when:
-     - Switching between "Current" and "Historical" tabs
      - Changing days in the calendar
      - Changing instruments
      - Changing stations
@@ -197,7 +196,7 @@ PhenoTag ensures annotations are properly preserved and loaded when navigating:
    - Annotations for the new selection are loaded automatically
 
 3. **When saving manually**:
-   - All annotations across all loaded days are saved at once
+   - All annotations for the current day are saved at once
    - Confirmation message shows success/failure status
    - Last save timestamp is updated
 
@@ -235,10 +234,13 @@ PhenoTag features a tabbed interface for ROI annotations:
    - Selected flags are displayed with their categories
    
 3. **Apply from ROI_00 Feature**:
-   - The ROI_00 tab (full image) has an "Apply these flags to all ROIs" option
-   - When enabled, flags from ROI_00 are applied to all other ROIs
-   - Useful for setting common flags across multiple ROIs quickly
-   - Changes take effect immediately
+   - The ROI_00 tab (full image) has an "Apply ROI_00 Settings to All ROIs" button
+   - When clicked, all settings from ROI_00 (discard, snow presence, and flags) are applied to all other ROIs
+   - Detailed visual indicators show which ROIs are affected and what settings will be applied
+   - Useful for setting common settings across multiple ROIs quickly and consistently
+   - Changes take effect immediately and are saved automatically
+   - Each affected ROI shows a clear indicator when using settings from ROI_00
+   - Comprehensive error handling ensures reliable application of settings
 
 4. **Summary Tab**:
    - Final tab provides a complete overview of all ROIs

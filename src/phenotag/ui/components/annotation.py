@@ -9,6 +9,7 @@ import streamlit as st
 import datetime
 import pandas as pd
 import re
+import time
 from typing import List, Dict, Any
 
 from phenotag.config import load_config_files
@@ -140,11 +141,47 @@ def display_annotation_panel(current_filepath):
                 # Create columns for the ROI settings
                 roi_col1, roi_col2 = st.columns([1, 1])
                 
+                # Initialize key variables
+                roi00_apply_key = f"apply_all_ROI_00_{image_key}"
+                roi00_flags_key = f"roi00_flags_{image_key}"
+                roi00_discard_key = f"roi00_discard_{image_key}"
+                roi00_snow_key = f"roi00_snow_{image_key}"
+                
+                # Default to current flags and settings
+                current_flags = roi_data.get("flags", [])
+                current_discard = roi_data.get("discard", False)
+                current_snow = roi_data.get("snow_presence", False)
+                
+                # If not ROI_00 and apply_all is checked, use ROI_00's settings
+                apply_from_roi00 = roi_name != "ROI_00" and st.session_state.get(roi00_apply_key, False)
+                
+                if apply_from_roi00:
+                    # Apply ROI_00 flags if available
+                    if roi00_flags_key in st.session_state:
+                        current_flags = st.session_state[roi00_flags_key]
+                        print(f"[ROI Apply] Applied ROI_00 flags to {roi_name}: {current_flags}")
+                    
+                    # Apply ROI_00 discard setting if available
+                    if roi00_discard_key in st.session_state:
+                        current_discard = st.session_state[roi00_discard_key]
+                        print(f"[ROI Apply] Applied ROI_00 discard to {roi_name}: {current_discard}")
+                    
+                    # Apply ROI_00 snow presence setting if available
+                    if roi00_snow_key in st.session_state:
+                        current_snow = st.session_state[roi00_snow_key]
+                        print(f"[ROI Apply] Applied ROI_00 snow presence to {roi_name}: {current_snow}")
+                
+                # Set default apply_to_all flag
+                apply_to_all = False
+                if roi_name == "ROI_00":
+                    # Get the apply_all state from session
+                    apply_to_all = st.session_state.get(f"apply_all_{roi_key}", False)
+                
                 with roi_col1:
                     # Create checkbox for discard
                     discard = st.checkbox(
                         "Discard", 
-                        value=roi_data.get("discard", False),
+                        value=current_discard,
                         key=f"discard_{roi_key}",
                         help="Mark this image/ROI as not suitable for analysis"
                     )
@@ -152,35 +189,10 @@ def display_annotation_panel(current_filepath):
                     # Create checkbox for snow presence
                     snow_presence = st.checkbox(
                         "Snow Present", 
-                        value=roi_data.get("snow_presence", False),
+                        value=current_snow,
                         key=f"snow_{roi_key}",
                         help="Mark if snow is present in this ROI"
                     )
-                    
-                    # Add "Apply to all ROIs" checkbox in the ROI_00 tab
-                    apply_to_all = False
-                    if roi_name == "ROI_00":
-                        # Store the previous state to detect changes
-                        if f"apply_all_{roi_key}_prev" not in st.session_state:
-                            st.session_state[f"apply_all_{roi_key}_prev"] = False
-                        
-                        # Initialize ROI_00 flags in session state if not present
-                        roi00_flags_key = f"roi00_flags_{image_key}"
-                        if roi00_flags_key not in st.session_state:
-                            st.session_state[roi00_flags_key] = roi_data.get("flags", [])
-                            
-                        apply_to_all = st.checkbox(
-                            "Apply these flags to all ROIs", 
-                            value=st.session_state.get(f"apply_all_{roi_key}", False),
-                            key=f"apply_all_{roi_key}",
-                            help="Apply the selected flags from ROI_00 to all other ROIs"
-                        )
-                        
-                        # If checkbox state changed, force a rerun to update all tabs
-                        if apply_to_all != st.session_state[f"apply_all_{roi_key}_prev"]:
-                            st.session_state[f"apply_all_{roi_key}_prev"] = apply_to_all
-                            # Use current flags from ROI_00 data, not the selected_flags which isn't defined yet
-                            st.rerun()
                 
                 with roi_col2:
                     # Create multiselect for flags with categories
@@ -189,16 +201,9 @@ def display_annotation_panel(current_filepath):
                     for category in sorted(flags_by_category.keys()):
                         multiselect_options.extend(flags_by_category[category])
                     
-                    # Check if we should use flags from ROI_00
-                    roi00_apply_key = f"apply_all_ROI_00_{image_key}"
-                    roi00_flags_key = f"roi00_flags_{image_key}"
-                    
-                    # Default to current flags
-                    current_flags = roi_data.get("flags", [])
-                    
-                    # If not ROI_00 and apply_all is checked, use ROI_00's flags
-                    if roi_name != "ROI_00" and st.session_state.get(roi00_apply_key, False) and roi00_flags_key in st.session_state:
-                        current_flags = st.session_state[roi00_flags_key]
+                    # Display applied-from-ROI00 indicator if needed
+                    if apply_from_roi00:
+                        st.info(f"Using settings from ROI_00", icon="🔄")
                     
                     # Select flags with this multiselect
                     selected_flags = st.multiselect(
@@ -213,29 +218,104 @@ def display_annotation_panel(current_filepath):
                     # For ROI_00, update the stored flags when they change
                     if roi_name == "ROI_00" and selected_flags != st.session_state.get(roi00_flags_key, []):
                         st.session_state[roi00_flags_key] = selected_flags
-                    
-                    # Store the selected flags
-                    updated_flag_selections[roi_name] = {
-                        "discard": discard,
-                        "snow_presence": snow_presence,
-                        "flags": selected_flags,
-                        "apply_to_all": apply_to_all
-                    }
-                    
-                    # If we're on ROI_00 and apply_to_all is enabled, show a message
-                    if roi_name == "ROI_00" and apply_to_all:
-                        st.info("These flags will be applied to all other ROIs", icon="ℹ️")
                 
+                # Now add the "Apply to all ROIs" button after both columns
+                # to ensure selected_flags is already defined
+                # Store the selected flags and settings for ALL ROIs
+                updated_flag_selections[roi_name] = {
+                    "discard": discard,
+                    "snow_presence": snow_presence,
+                    "flags": selected_flags,
+                    "apply_to_all": apply_to_all if roi_name == "ROI_00" else False
+                }
+                
+                # ROI_00 specific actions
+                if roi_name == "ROI_00":
+                    # Create a button to apply ROI_00 settings to all other ROIs
+                    if st.button(
+                        "Apply ROI_00 Settings to All ROIs", 
+                        key=f"apply_all_button_{roi_key}",
+                        help="Apply discard, snow presence, and flags from ROI_00 to all other ROIs",
+                        type="primary",
+                        use_container_width=True
+                    ):
+                        try:
+                            # Store the current ROI_00 settings to apply to other ROIs
+                            st.session_state[roi00_flags_key] = selected_flags
+                            st.session_state[roi00_discard_key] = discard
+                            st.session_state[roi00_snow_key] = snow_presence
+                            
+                            # Log the settings being applied
+                            print(f"[ROI_00 Settings] Applying settings to all ROIs for {os.path.basename(image_key)}")
+                            print(f"[ROI_00 Settings] Flags: {selected_flags}")
+                            print(f"[ROI_00 Settings] Discard: {discard}")
+                            print(f"[ROI_00 Settings] Snow Presence: {snow_presence}")
+                            
+                            # Set the apply_all flag to True
+                            st.session_state[f"apply_all_{roi_key}"] = True
+                            print(f"[ROI_00 Settings] Set apply_all flag: {f'apply_all_{roi_key}'} = True")
+                            
+                            # Also set the ROI_00 apply flag for consistent state tracking
+                            st.session_state[roi00_apply_key] = True
+                            print(f"[ROI_00 Settings] Set ROI_00 apply flag: {roi00_apply_key} = True")
+                            
+                            # Get the list of ROIs that will receive these settings
+                            affected_rois = [r for r in all_roi_names if r != "ROI_00"]
+                            print(f"[ROI_00 Settings] Settings will be applied to {len(affected_rois)} ROIs: {', '.join(affected_rois)}")
+                            
+                            # Save annotations to ensure they're persisted
+                            try:
+                                print(f"[ROI_00 Settings] Saving annotations...")
+                                save_all_annotations(force_save=True)
+                                print(f"[ROI_00 Settings] Annotations saved successfully")
+                            except Exception as save_error:
+                                print(f"[ROI_00 Settings] Error during save: {str(save_error)}")
+                                st.error(f"Error saving annotations: {str(save_error)}", icon="⚠️")
+                                # Continue with the process even if save fails
+                            
+                            # Show a success message
+                            roi_count = len(affected_rois)
+                            st.success(f"Applied ROI_00 settings to {roi_count} other ROIs and saved", icon="✅")
+                            
+                            # Force a rerun to update all tabs
+                            print(f"[ROI_00 Settings] Waiting briefly before UI refresh...")
+                            time.sleep(1)  # Brief pause to ensure save completes
+                            print(f"[ROI_00 Settings] Triggering UI refresh...")
+                            st.rerun()
+                        except Exception as e:
+                            # Provide detailed error information
+                            print(f"[ROI_00 Settings] ERROR: {str(e)}")
+                            
+                            # Show error message to user
+                            st.error(f"Error applying ROI_00 settings: {str(e)}", icon="⚠️")
+                            
+                            # Try to reset the state to prevent issues
+                            try:
+                                st.session_state[f"apply_all_{roi_key}"] = False
+                                st.session_state[roi00_apply_key] = False
+                                print(f"[ROI_00 Settings] Reset apply flags after error")
+                            except Exception:
+                                pass
+                    
+                    # If we're on ROI_00 and apply_to_all is enabled, show a message with details
+                    if apply_to_all:
+                        # Get list of affected ROIs
+                        affected_rois = [r for r in all_roi_names if r != "ROI_00"]
+                        roi_count = len(affected_rois)
+                        
+                        # Create a detailed message
+                        st.warning(
+                            f"These settings will be applied to {roi_count} other ROIs:\n"
+                            f"- Discard: {'Yes' if discard else 'No'}\n"
+                            f"- Snow Present: {'Yes' if snow_presence else 'No'}\n"
+                            f"- Flags: {len(selected_flags)} selected",
+                            icon="⚠️"
+                        )
+                                                
                 # Show current flags
-                if selected_flags:
-                    st.write("Current flags:")
-                    for flag in selected_flags:
-                        # Find the display name with category
-                        display_name = next((label for value, label in multiselect_options if value == flag), flag)
-                        st.caption(f"- {display_name}")
-                else:
-                    st.caption("No flags selected for this ROI")
-        
+                if not selected_flags:
+                    st.info("No flags selected for this ROI", icon="ℹ️")
+                
         # Display the summary tab
         with summary_tab:
             st.write("### Annotation Summary")
@@ -255,10 +335,17 @@ def display_annotation_panel(current_filepath):
                         updated_flag_selections["ROI_00"]["apply_to_all"]):
                         apply_from_roi00 = True
                     
-                    # Determine which flags to display
+                    # Start with the current selections
                     display_flags = selections["flags"]
+                    display_discard = selections["discard"]
+                    display_snow = selections["snow_presence"]
+                    
+                    # If applying from ROI_00, use those settings instead
                     if apply_from_roi00:
-                        display_flags = updated_flag_selections["ROI_00"]["flags"]
+                        roi00_settings = updated_flag_selections["ROI_00"]
+                        display_flags = roi00_settings["flags"]
+                        display_discard = roi00_settings["discard"]
+                        display_snow = roi00_settings["snow_presence"]
                     
                     # Format the flags as a readable string with categories
                     formatted_flags = []
@@ -275,8 +362,8 @@ def display_annotation_panel(current_filepath):
                     # Add to summary data
                     summary_data.append({
                         "ROI": roi_name,
-                        "Discard": "Yes" if selections["discard"] else "No",
-                        "Snow Present": "Yes" if selections["snow_presence"] else "No",
+                        "Discard": "Yes" if display_discard else "No",
+                        "Snow Present": "Yes" if display_snow else "No",
                         "Flag Count": len(display_flags),
                         "Flags": flags_str,
                         "Applied from ROI_00": "Yes" if apply_from_roi00 else "No" if roi_name != "ROI_00" else "N/A"
@@ -362,18 +449,39 @@ def display_annotation_panel(current_filepath):
                 # Handle "Apply to all" from ROI_00
                 apply_from_roi00 = False
                 if "ROI_00" in updated_flag_selections and updated_flag_selections["ROI_00"]["apply_to_all"]:
-                    # Only apply flags from ROI_00 to other ROIs if checkbox is checked
+                    # Only apply settings from ROI_00 to other ROIs if the flag is true
                     apply_from_roi00 = roi_name != "ROI_00"  # Don't apply to ROI_00 itself
                 
+                # Start with the current selections
                 roi_flags = selections["flags"]
-                if apply_from_roi00:
-                    # Use ROI_00's flags instead
-                    roi_flags = updated_flag_selections["ROI_00"]["flags"]
+                roi_discard = selections["discard"]
+                roi_snow = selections["snow_presence"]
                 
+                # If applying from ROI_00, override with ROI_00 settings
+                if apply_from_roi00:
+                    # Get ROI_00 settings
+                    roi00_settings = updated_flag_selections["ROI_00"]
+                    
+                    # Use ROI_00's flags instead
+                    roi_flags = roi00_settings["flags"]
+                    
+                    # Use ROI_00's discard setting
+                    roi_discard = roi00_settings["discard"]
+                    
+                    # Use ROI_00's snow presence setting
+                    roi_snow = roi00_settings["snow_presence"]
+                    
+                    # Log what's being applied
+                    print(f"[Data Build] Applied ROI_00 settings to {roi_name}:")
+                    print(f"  - Flags: {roi_flags}")
+                    print(f"  - Discard: {roi_discard}")
+                    print(f"  - Snow Presence: {roi_snow}")
+                
+                # Build the ROI data with all settings
                 edited_data.append({
                     "roi_name": roi_name,
-                    "discard": selections["discard"],
-                    "snow_presence": selections["snow_presence"],
+                    "discard": roi_discard,
+                    "snow_presence": roi_snow,
                     "flags": roi_flags
                 })
             else:
@@ -419,11 +527,12 @@ def display_annotation_panel(current_filepath):
             from phenotag.ui.components.annotation_timer import annotation_timer
             annotation_timer.record_interaction()
             
-            # Get auto-save setting
+            # Get auto-save settings
             auto_save_enabled = st.session_state.get('auto_save_enabled', True)
+            immediate_save_enabled = st.session_state.get('immediate_save_enabled', True)
             
             # If immediate saving is enabled, save annotations right away
-            if auto_save_enabled and st.session_state.get('immediate_save_enabled', True):
+            if auto_save_enabled and immediate_save_enabled:
                 # Save annotations immediately without waiting for timeout
                 save_all_annotations()
                 st.session_state.unsaved_changes = False
@@ -444,15 +553,15 @@ def display_annotation_panel(current_filepath):
             last_save = st.session_state.last_save_time.strftime("%H:%M:%S") if st.session_state.last_save_time else "Never"
             st.success(f"All changes saved at {last_save}", icon="✅")
         
-        # Setup auto-save if enabled
-        auto_save = st.checkbox("Enable auto-save", value=True, 
+        # Setup auto-save if enabled (simplified without tab-specific keys)
+        auto_save = st.checkbox("Enable auto-save", value=st.session_state.get('auto_save_enabled', True), 
                            help="Automatically save annotations every 60 seconds",
-                           key="auto_save_enabled")
+                           key=f"auto_save_enabled_{image_key}")
         
         # Add immediate save option
-        immediate_save = st.checkbox("Save immediately on changes", value=True,
+        immediate_save = st.checkbox("Save immediately on changes", value=st.session_state.get('immediate_save_enabled', True),
                                 help="Automatically save annotations immediately when changes are made",
-                                key="immediate_save_enabled")
+                                key=f"immediate_save_enabled_{image_key}")
         
         # Store auto-save preferences in session state
         st.session_state.auto_save_enabled = auto_save
@@ -501,8 +610,7 @@ def display_annotation_panel(current_filepath):
             save_all_annotations()
             st.session_state.unsaved_changes = False
             st.session_state.last_save_time = datetime.datetime.now()
-            if 'auto_save_time' in st.session_state:
-                st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
+            st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
             st.rerun()
         
         # Create a dropdown menu for reset options
@@ -654,9 +762,9 @@ def save_all_annotations(force_save=False):
             annotation_timer.start_timer(st.session_state.annotation_timer_current_day)
 
         if saved_count > 0:
-            st.success(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!")
+            st.toast(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!", icon="✅")
         else:
-            st.warning("No valid images to save annotations for.")
+            st.toast("No valid images to save annotations for.")
     except Exception as e:
         st.error(f"Error saving annotations: {str(e)}")
 
@@ -727,7 +835,7 @@ def load_day_annotations(selected_day, daily_filepaths):
                     print(f"Loaded annotations for {loaded_count} images from {annotations_file}")
 
                 # Show notification that annotations were loaded
-                st.toast(f"Loaded annotations for day {selected_day}", icon="✅")
+                st.success(f"Loaded annotations for day {selected_day}", icon="✅")
         else:
             print(f"No annotations file found for day {selected_day} at {annotations_file}")
     except Exception as e:

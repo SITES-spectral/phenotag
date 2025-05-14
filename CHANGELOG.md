@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - New UI guide documentation (`docs/ui_guide.md`)
 - Persistent annotation system that saves annotations to YAML files
+- **Enhanced "Apply ROI_00 Settings to All ROIs" button functionality:**
+  - Improved consistency by applying all settings (discard, snow presence, and flags)
+  - Added detailed visual indicators showing which ROIs are affected
+  - Enhanced error handling with clear user feedback
+  - Added comprehensive logging for easier debugging
+  - Improved UI notifications when settings are applied from ROI_00
+  - Added expandable list of affected ROIs in the ROI_00 tab
 - New `save_annotations` and `load_annotations` functions in io_tools
 - Documentation of the annotation storage system (`docs/annotation_system.md`)
 - Comprehensive stations.yaml schema documentation (`docs/stations_yaml_schema.md`)
@@ -75,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Moved calendar view to sidebar for better organization
   - Improved annotation panel with status indicators and auto-save
   - Enhanced layout with better use of containers and columns
+  - Simplified UI by removing tab interface - focused on current image annotation only
 
 ### Fixed
 - Fixed critical issue with calendar not showing correct image counts for certain days
@@ -88,6 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved error handling during annotation loading and saving
   - Added save-before-navigation to prevent data loss
   - Enhanced debugging for annotation operations
+  - Fixed session state conflict with auto-save widgets when switching between tabs
+  - Implemented tab-specific session state keys to prevent widget conflicts
 
 ## [0.2.0] - 2025-05-12
 
