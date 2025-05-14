@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Centralized annotation status tracking system:**
+  - Status saved in L1 parent folder with consistent naming pattern: `L1_annotation_status_{station}_{instrument}.yaml`
+  - Calendar view shows progress icons based on centralized status tracking
+  - Improved annotation status caching for better performance
+  - Automatic status updates when annotations are saved
+- **Enhanced annotation time tracking:**
+  - Accumulation of annotation time across multiple sessions
+  - Preservation of previous annotation time when updating files
+  - Improved time tracking to avoid double-counting
+  - Better display of total annotation time in the UI
 - New UI guide documentation (`docs/ui_guide.md`)
 - Persistent annotation system that saves annotations to YAML files
 - **Enhanced "Apply ROI_00 Settings to All ROIs" button functionality:**

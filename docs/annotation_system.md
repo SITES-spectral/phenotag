@@ -4,7 +4,9 @@ This document describes the annotation storage system in PhenoTag, detailing how
 
 ## Storage Structure
 
-PhenoTag stores annotations in YAML files alongside the images they describe, using the following path structure:
+### Individual Day Annotations
+
+PhenoTag stores day-level annotations in YAML files alongside the images they describe, using the following path structure:
 
 ```
 {base_dir}/{station_name}/phenocams/products/{instrument_id}/L1/{year}/{day_of_year}/annotations_{day_of_year}.yaml
@@ -15,6 +17,27 @@ For example, if your data directory is `/data/sites/`, your station is `abisko`,
 ```
 /data/sites/abisko/phenocams/products/PC01/L1/2023/001/annotations_001.yaml
 ```
+
+### Centralized Annotation Status
+
+In addition to individual day annotation files, PhenoTag also maintains a centralized annotation status file at the L1 parent level:
+
+```
+{base_dir}/{station_name}/phenocams/products/{instrument_id}/L1/L1_annotation_status_{station_name}_{instrument_id}.yaml
+```
+
+For example:
+
+```
+/data/sites/abisko/phenocams/products/PC01/L1/L1_annotation_status_abisko_PC01.yaml
+```
+
+This centralized file tracks the annotation status (not_annotated, in_progress, or completed) for all days in each month/year, enabling:
+
+1. Faster scanning of annotation status for calendar view indicators
+2. Improved performance when displaying annotation progress
+3. Centralized tracking of annotation completion across all days
+4. Better synchronization between different annotation sessions
 
 ## Annotation Format
 
