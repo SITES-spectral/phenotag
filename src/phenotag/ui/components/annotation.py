@@ -92,6 +92,29 @@ def display_annotation_panel(current_filepath):
         # Use existing annotations
         annotation_data = st.session_state.image_annotations[image_key]
         print(f"Loaded existing annotations for {os.path.basename(image_key)}")
+        # Add debug info
+        print(f"Annotation data type: {type(annotation_data)}")
+        print(f"Annotation data contains {len(annotation_data)} items")
+        if len(annotation_data) > 0:
+            print(f"First item type: {type(annotation_data[0])}")
+            print(f"First item keys: {annotation_data[0].keys() if isinstance(annotation_data[0], dict) else 'Not a dict'}")
+            
+        if not isinstance(annotation_data, list):
+            print(f"WARNING: annotations are not in list format. Converting to list...")
+            # Try to convert to list format
+            try:
+                if isinstance(annotation_data, dict):
+                    converted_data = []
+                    for roi_name, roi_data in annotation_data.items():
+                        if isinstance(roi_data, dict):
+                            roi_data['roi_name'] = roi_name
+                            converted_data.append(roi_data)
+                    annotation_data = converted_data
+                    # Update in session state
+                    st.session_state.image_annotations[image_key] = annotation_data
+                    print(f"Successfully converted annotations to list format with {len(annotation_data)} items")
+            except Exception as e:
+                print(f"Error converting annotations: {str(e)}")
 
     # Add the flag selector column for UI purposes (not stored in annotations)
     for row in annotation_data:
@@ -630,8 +653,34 @@ def save_all_annotations(force_save=False):
 
                 # Store annotations for this image
                 img_filename = os.path.basename(img_path)
-                annotations_by_day[doy][img_filename] = annotations
-                saved_count += 1
+                
+                # Make sure annotations is in the expected format (list of dicts, one per ROI)
+                if isinstance(annotations, list):
+                    # Already in correct format
+                    annotations_by_day[doy][img_filename] = annotations
+                    saved_count += 1
+                elif isinstance(annotations, dict):
+                    # If it's a dict of ROIs, we need to convert to list format
+                    try:
+                        converted_annotations = []
+                        for roi_name, roi_data in annotations.items():
+                            if isinstance(roi_data, dict):
+                                # Make sure roi_name is in the dict
+                                roi_data_copy = roi_data.copy()
+                                roi_data_copy['roi_name'] = roi_name
+                                converted_annotations.append(roi_data_copy)
+                        
+                        if converted_annotations:
+                            annotations_by_day[doy][img_filename] = converted_annotations
+                            saved_count += 1
+                            print(f"Converted and saved annotations for image: {img_filename}")
+                    except Exception as e:
+                        print(f"Error converting annotations for saving: {str(e)}")
+                else:
+                    print(f"Warning: Unexpected annotations format for {img_filename}: {type(annotations)}")
+                    # Save anyway to avoid data loss
+                    annotations_by_day[doy][img_filename] = annotations
+                    saved_count += 1
 
         # Save annotations by day
         for doy, day_annotations in annotations_by_day.items():
@@ -806,9 +855,33 @@ def load_day_annotations(selected_day, daily_filepaths):
                         # Find the full path for this filename
                         for filepath in daily_filepaths:
                             if os.path.basename(filepath) == img_name:
-                                # Store annotations using full path as key
-                                st.session_state.image_annotations[filepath] = img_annotations
-                                loaded_count += 1
+                                # Store annotations using full path as key 
+                                # Make sure img_annotations is in the expected format
+                                if isinstance(img_annotations, list):
+                                    # This is the correct format - a list of dictionaries, one per ROI
+                                    st.session_state.image_annotations[filepath] = img_annotations
+                                    loaded_count += 1
+                                    print(f"Loaded annotations for image: {img_name} - {len(img_annotations)} ROIs")
+                                else:
+                                    # Try to convert to the expected format if needed
+                                    try:
+                                        converted_annotations = []
+                                        if isinstance(img_annotations, dict):
+                                            # If it's a dict of ROIs, convert to list
+                                            for roi_name, roi_data in img_annotations.items():
+                                                if isinstance(roi_data, dict):
+                                                    # Make sure roi_name is in the dict
+                                                    roi_data['roi_name'] = roi_name
+                                                    converted_annotations.append(roi_data)
+                                                else:
+                                                    print(f"Warning: Unexpected ROI data format for {roi_name}: {type(roi_data)}")
+                                            
+                                            if converted_annotations:
+                                                st.session_state.image_annotations[filepath] = converted_annotations
+                                                loaded_count += 1
+                                                print(f"Converted and loaded annotations for image: {img_name} - {len(converted_annotations)} ROIs")
+                                    except Exception as conv_error:
+                                        print(f"Error converting annotations for {img_name}: {str(conv_error)}")
                                 break
                     
                     print(f"Loaded annotations for {loaded_count} images from {annotations_file}")
