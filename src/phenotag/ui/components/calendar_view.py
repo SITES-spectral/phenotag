@@ -207,6 +207,64 @@ def render_calendar(normalized_name, selected_instrument, selected_year, selecte
             
             # Check if we need to load status
             if status_key not in st.session_state.annotation_status_map:
+                # First, try to load from L1 parent directory
+                try:
+                    from phenotag.ui.components.annotation_status_manager import get_l1_parent_path, get_status_filename
+                    l1_parent_path = get_l1_parent_path(base_dir, station_name, instrument_id)
+                    status_filename = get_status_filename(station_name, instrument_id)
+                    status_file_path = l1_parent_path / status_filename
+                    
+                    # Check if the status file exists
+                    if os.path.exists(status_file_path):
+                        import yaml
+                        with open(status_file_path, "r") as f:
+                            status_data = yaml.safe_load(f) or {}
+                        
+                        # Extract statuses for this year/month
+                        status_map = {}
+                        if ("annotations" in status_data and
+                            str(selected_year) in status_data["annotations"]):
+                            
+                            year_data = status_data["annotations"][str(selected_year)]
+                            
+                            # Get days in this month (basic calculation)
+                            import datetime
+                            _, num_days = calendar.monthrange(int(selected_year), selected_month)
+                            month_start = datetime.datetime(int(selected_year), selected_month, 1)
+                            
+                            # Process each day in the month
+                            for day in range(1, num_days + 1):
+                                # Calculate day of year
+                                this_date = month_start + datetime.timedelta(days=day-1)
+                                doy = this_date.timetuple().tm_yday
+                                padded_doy = f"{doy:03d}"
+                                
+                                # Get status from L1 parent file if available
+                                if padded_doy in year_data:
+                                    day_status = year_data[padded_doy].get("status", "not_annotated")
+                                    status_map[padded_doy] = day_status
+                                else:
+                                    # Fallback to checking individual files
+                                    status = check_day_annotation_status(
+                                        base_dir,
+                                        station_name,
+                                        instrument_id,
+                                        selected_year,
+                                        padded_doy
+                                    )
+                                    status_map[padded_doy] = status
+                        
+                        # If we found statuses, use them
+                        if status_map:
+                            st.session_state.annotation_status_map[status_key] = status_map
+                            print(f"Loaded annotation status from L1 parent for {len(status_map)} days in {selected_month}/{selected_year}")
+                            # No need to check individual files
+                            return
+                
+                except Exception as parent_error:
+                    print(f"Error loading from L1 parent: {str(parent_error)}")
+                    # Continue with individual file checking
+                
                 # Create a new status map for this month
                 status_map = {}
                 

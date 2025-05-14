@@ -730,6 +730,22 @@ def save_all_annotations(force_save=False):
                                 st.session_state.annotation_status_map[status_key][doy] = 'completed'
                                 print(f"Updated annotation status cache for day {doy}")
                                 
+                                # Save status to L1 parent folder
+                                try:
+                                    from phenotag.ui.components.annotation_status_manager import save_status_to_l1_parent
+                                    save_status_to_l1_parent(
+                                        base_dir,
+                                        station_name,
+                                        instrument_id,
+                                        selected_year,
+                                        month,
+                                        doy,
+                                        'completed'
+                                    )
+                                    print(f"Saved annotation status to L1 parent folder for day {doy}")
+                                except Exception as status_error:
+                                    print(f"Error saving status to L1 parent: {str(status_error)}")
+                                
                                 # Also update status for historical view if needed
                                 if 'historical_year' in st.session_state and 'historical_month' in st.session_state:
                                     # Create historical status key
