@@ -228,6 +228,7 @@ def main():
         # Save annotations before switching tabs
         if 'image_annotations' in st.session_state and st.session_state.image_annotations:
             save_all_annotations()
+            print(f"Saved annotations when switching from {prev_tab} to {selected_tab} tab")
             
         # Pause the annotation timer when switching tabs
         if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:

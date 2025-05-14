@@ -84,6 +84,7 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
             if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
                 from phenotag.ui.components.annotation import save_all_annotations
                 save_all_annotations()
+                print(f"Saved annotations when changing year to {selected_year}")
                 
             # Pause the annotation timer when changing years
             if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
@@ -133,6 +134,7 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
             # Save the annotations first to avoid losing data
             from phenotag.ui.components.annotation import save_all_annotations
             save_all_annotations()
+            print(f"Saved annotations when changing month to {selected_month_idx}")
             # Clear annotations 
             st.session_state.image_annotations = {}
             
