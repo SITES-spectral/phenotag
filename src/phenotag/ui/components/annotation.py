@@ -683,9 +683,21 @@ def save_all_annotations(force_save=False):
                                 
                                 # Save status to L1 parent folder
                                 try:
+                                    # We need to get base_dir from l1_dir or scan_info
+                                    if 'scan_info' in st.session_state:
+                                        current_base_dir = st.session_state.scan_info.get('base_dir')
+                                    else:
+                                        # Extract base_dir from the l1_dir path
+                                        # l1_dir is something like: /path/to/base_dir/station/phenocams/products/instrument/L1
+                                        # We need to remove the station/phenocams/products/instrument/L1 part
+                                        path_parts = l1_dir.split(os.sep)
+                                        # Remove the last 5 parts: station/phenocams/products/instrument/L1
+                                        base_path_parts = path_parts[:-5]
+                                        current_base_dir = os.sep.join(base_path_parts)
+                                        
                                     from phenotag.ui.components.annotation_status_manager import save_status_to_l1_parent
                                     save_status_to_l1_parent(
-                                        base_dir,
+                                        current_base_dir,
                                         station_name,
                                         instrument_id,
                                         selected_year,
