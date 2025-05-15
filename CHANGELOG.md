@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preservation of previous annotation time when updating files
   - Improved time tracking to avoid double-counting
   - Better display of total annotation time in the UI
+
+### Fixed
+- Fixed an undefined `annotation_time_minutes` error in the annotation saving function
+- Added missing `yaml` import to fix annotation loading error
+- Fixed `station_name` reference error when saving to L1 parent directory
+- **Fixed critical issue with annotation auto-saving overwriting data:**
+  - Implemented robust normalized comparison to avoid false change detection
+  - Enhanced the annotation loading logic to properly update widget values
+  - Added explicit widget state management to ensure flags appear correctly in UI
+  - Prevented auto-saving when annotations are just loaded (vs. actually changed)
+  - Added detailed debug logging to track annotation changes
+  - Fixed type inconsistencies in flag comparisons
+- **Enhanced "Copy ROI_00 Settings to All ROIs" behavior:**
+  - Changed from persistent linkage to a one-time copy operation
+  - Added checkboxes to select which settings to copy (flags, discard, snow presence)
+  - Allows individual customization of ROIs after copying common settings
+  - More descriptive success message showing which settings were copied
+
+### Added
 - New UI guide documentation (`docs/ui_guide.md`)
 - Persistent annotation system that saves annotations to YAML files
 - **Enhanced "Apply ROI_00 Settings to All ROIs" button functionality:**
