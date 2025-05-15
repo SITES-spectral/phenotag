@@ -9,13 +9,46 @@ from pathlib import Path
 import yaml
 from datetime import datetime
 
+def get_normalized_station_name(station_name):
+    """
+    Get the normalized version of a station name by looking it up in the stations.yaml config.
+    This handles cases where the station name has Swedish characters that need proper normalization.
+    
+    Args:
+        station_name (str): Station name (either normalized or display name)
+        
+    Returns:
+        str: Normalized station name
+    """
+    from phenotag.config import load_config_files
+    
+    # Load config data and get stations
+    config = load_config_files()
+    stations_data = config.get('stations', {}).get('stations', {})
+    
+    # Check if it's already a normalized name
+    if station_name in stations_data:
+        return station_name
+    
+    # Otherwise, try to find the normalized name for this display name
+    for norm_name, station_info in stations_data.items():
+        if station_info.get('name') == station_name:
+            return norm_name
+    
+    # If all else fails, just return lowercase (backwards compatibility)
+    return station_name.lower()
+
 def get_l1_parent_path(base_dir, station_name, instrument_id):
     """Generate the path to the L1 parent directory."""
-    return Path(base_dir) / station_name / "phenocams" / "products" / instrument_id / "L1"
+    # Get properly normalized station name that handles Swedish characters
+    normalized_name = get_normalized_station_name(station_name)
+    return Path(base_dir) / normalized_name / "phenocams" / "products" / instrument_id / "L1"
 
 def get_status_filename(station_name, instrument_id):
     """Generate the filename for the annotation status file."""
-    return f"L1_annotation_status_{station_name}_{instrument_id}.yaml"
+    # Get properly normalized station name that handles Swedish characters
+    normalized_name = get_normalized_station_name(station_name)
+    return f"L1_annotation_status_{normalized_name}_{instrument_id}.yaml"
 
 def save_status_to_l1_parent(base_dir, station_name, instrument_id, year, month, day, status):
     """
@@ -34,8 +67,8 @@ def save_status_to_l1_parent(base_dir, station_name, instrument_id, year, month,
         # Get the L1 parent path
         l1_parent_path = get_l1_parent_path(base_dir, station_name, instrument_id)
         
-        # Generate the status filename
-        status_filename = f"L1_annotation_status_{station_name}_{instrument_id}.yaml"
+        # Generate the status filename using the get_status_filename function for consistency
+        status_filename = get_status_filename(station_name, instrument_id)
         status_file_path = l1_parent_path / status_filename
         
         # Create or load existing status data
@@ -43,9 +76,11 @@ def save_status_to_l1_parent(base_dir, station_name, instrument_id, year, month,
             with open(status_file_path, "r") as f:
                 status_data = yaml.safe_load(f) or {}
         else:
+            # Get the normalized station name for metadata
+            normalized_name = get_normalized_station_name(station_name)
             status_data = {
                 "metadata": {
-                    "station": station_name,
+                    "station": normalized_name,  # Use properly normalized station name
                     "instrument_id": instrument_id,
                     "created": datetime.now().isoformat()
                 },
@@ -81,7 +116,8 @@ def save_status_to_l1_parent(base_dir, station_name, instrument_id, year, month,
         # Preserve other metadata fields
         if "metadata" in status_data:
             # Ensure these fields are always set correctly
-            status_data["metadata"]["station"] = station_name
+            normalized_name = get_normalized_station_name(station_name)
+            status_data["metadata"]["station"] = normalized_name  # Use properly normalized station name
             status_data["metadata"]["instrument_id"] = instrument_id
             
             # Keep all other metadata fields
