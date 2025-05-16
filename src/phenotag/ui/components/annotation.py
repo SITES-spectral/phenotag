@@ -569,48 +569,68 @@ def display_annotation_panel(current_filepath):
             last_save = st.session_state.last_save_time.strftime("%H:%M:%S") if st.session_state.last_save_time else "Never"
             st.success(f"All changes saved at {last_save}", icon="✅")
         
-        # Initialize auto-save and immediate save settings if not already set
+        # Initialize auto-save settings if not already set
+        # Default to disabled auto-save per user request
         if 'auto_save_enabled' not in st.session_state:
-            st.session_state.auto_save_enabled = True
+            st.session_state.auto_save_enabled = False
         if 'immediate_save_enabled' not in st.session_state:
-            st.session_state.immediate_save_enabled = True
+            st.session_state.immediate_save_enabled = False
+        
+        # Display a warning about auto-save being disabled
+        if st.session_state.get('unsaved_changes', False):
+            st.warning("⚠️ You have unsaved changes. Use the 'Save Now' button to save your work.")
             
-        # Create checkbox widgets for auto-save settings
-        # NOTE: Instead of value= from session state, we first initialize and then create widget
-        auto_save = st.checkbox("Enable auto-save", 
-                           value=st.session_state.auto_save_enabled,
-                           help="Automatically save annotations every 60 seconds",
-                           key=f"auto_save_enabled_{image_key}")
-        
-        immediate_save = st.checkbox("Save immediately on changes", 
-                                value=st.session_state.immediate_save_enabled,
-                                help="Automatically save annotations immediately when changes are made",
-                                key=f"immediate_save_enabled_{image_key}")
-        
-        # Update session state from widget values
-        st.session_state.auto_save_enabled = auto_save
-        st.session_state.immediate_save_enabled = immediate_save
-        
-        # Handle timed auto-save if enabled (and immediate save is not active or didn't catch all changes)
-        if auto_save and st.session_state.get('unsaved_changes', False):
-            # Add a placeholder for auto-save countdown
-            if 'auto_save_time' not in st.session_state:
-                st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
+        # Show information about when to save
+        st.info("Remember to save your annotations before switching to another day or closing the application.", icon="ℹ️")
             
-            # Calculate time until auto-save
-            now = datetime.datetime.now()
-            if now >= st.session_state.auto_save_time:
-                # Time to auto-save
-                save_all_annotations()
+        # Create a prominent save button
+        if st.button("💾 Save Annotations", 
+                    type="primary", 
+                    use_container_width=True,
+                    help="Save all annotations to disk"):
+            with st.spinner("Saving annotations..."):
+                save_all_annotations(force_save=True)
                 st.session_state.unsaved_changes = False
-                st.session_state.last_save_time = now
-                st.session_state.auto_save_time = now + datetime.timedelta(seconds=60)
+                st.session_state.last_save_time = datetime.datetime.now()
                 st.rerun()
-            else:
-                # Show countdown
-                seconds_left = int((st.session_state.auto_save_time - now).total_seconds())
-                if seconds_left > 0:
-                    st.caption(f"Auto-save in {seconds_left} seconds...")
+        
+        # Add option to re-enable auto-save if user wants it
+        with st.expander("Auto-save settings (advanced)"):
+            # Create checkbox widgets for auto-save settings
+            auto_save = st.checkbox("Enable auto-save", 
+                            value=st.session_state.auto_save_enabled,
+                            help="Automatically save annotations every 60 seconds",
+                            key=f"auto_save_enabled_{image_key}")
+            
+            immediate_save = st.checkbox("Save immediately on changes", 
+                                    value=st.session_state.immediate_save_enabled,
+                                    help="Automatically save annotations immediately when changes are made",
+                                    key=f"immediate_save_enabled_{image_key}")
+            
+            # Update session state from widget values
+            st.session_state.auto_save_enabled = auto_save
+            st.session_state.immediate_save_enabled = immediate_save
+            
+            # Handle timed auto-save if enabled (and immediate save is not active or didn't catch all changes)
+            if auto_save and st.session_state.get('unsaved_changes', False):
+                # Add a placeholder for auto-save countdown
+                if 'auto_save_time' not in st.session_state:
+                    st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
+                
+                # Calculate time until auto-save
+                now = datetime.datetime.now()
+                if now >= st.session_state.auto_save_time:
+                    # Time to auto-save
+                    save_all_annotations()
+                    st.session_state.unsaved_changes = False
+                    st.session_state.last_save_time = now
+                    st.session_state.auto_save_time = now + datetime.timedelta(seconds=60)
+                    st.rerun()
+                else:
+                    # Show countdown
+                    seconds_left = int((st.session_state.auto_save_time - now).total_seconds())
+                    if seconds_left > 0:
+                        st.caption(f"Auto-save in {seconds_left} seconds...")
     
         # Show elapsed annotation time
     
@@ -627,15 +647,19 @@ def display_annotation_panel(current_filepath):
                 delta_color="off"
             )
     
-        # Add buttons for saving and resetting 
-    
-        save_label = "Save Now" if st.session_state.get('unsaved_changes', False) else "Save All"
-        if st.button(save_label, use_container_width=True):
-            save_all_annotations()
-            st.session_state.unsaved_changes = False
-            st.session_state.last_save_time = datetime.datetime.now()
-            st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
-            st.rerun()
+        # Show elapsed annotation time here (moved up from below)
+        if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
+            from phenotag.ui.components.annotation_timer import annotation_timer
+            current_day = st.session_state.annotation_timer_current_day
+            formatted_time = annotation_timer.get_formatted_time(current_day)
+            
+            st.metric(
+                "Annotation Time",
+                formatted_time,
+                help="Total time spent annotating this day (HH:MM:SS)",
+                delta=None,
+                delta_color="off"
+            )
         
         # Create a dropdown menu for reset options
         reset_option = st.selectbox(
@@ -665,6 +689,11 @@ def save_all_annotations(force_save=False):
     Args:
         force_save: If True, save regardless of auto-save settings
     """
+    # Check if we're currently loading annotations - never save during load
+    if st.session_state.get('loading_annotations', False):
+        print("Skipping annotation save: currently loading annotations")
+        return
+        
     # Check if we should save based on auto-save settings
     auto_save_enabled = st.session_state.get('auto_save_enabled', True)
     immediate_save_enabled = st.session_state.get('immediate_save_enabled', True)
@@ -889,145 +918,152 @@ def load_day_annotations(selected_day, daily_filepaths):
     if not daily_filepaths:
         return
         
-    try:
-        # Initialize image_annotations if it doesn't exist
-        if 'image_annotations' not in st.session_state:
-            st.session_state.image_annotations = {}
-            
-        # Get the directory where we expect to find the annotations file
-        img_dir = os.path.dirname(daily_filepaths[0])
-        annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
-        
-        # Import the annotation timer
-        from phenotag.ui.components.annotation_timer import annotation_timer
-        
-        # Start the timer for this day
-        annotation_timer.start_timer(selected_day)
-        
-        # We'll now always load annotations from disk to ensure we have the latest data
-        # This is important when switching between tabs or when annotations are modified
-        print(f"Attempting to load annotations for day {selected_day} from disk")
-
-        # If annotations file exists, load it
-        if os.path.exists(annotations_file):
-            print(f"Loading annotations from file: {annotations_file}")
-            with open(annotations_file, 'r') as f:
-                import yaml
-                annotation_data = yaml.safe_load(f)
+    # Set loading flag to prevent concurrent saves while loading
+    st.session_state.loading_annotations = True
+    
+    # Create a placeholder for the loading indicator
+    with st.spinner(f"Loading annotations for day {selected_day}..."):
+        try:
+            # Initialize image_annotations if it doesn't exist
+            if 'image_annotations' not in st.session_state:
+                st.session_state.image_annotations = {}
                 
-                # Load previous annotation time if available
-                if 'annotation_time_minutes' in annotation_data:
-                    previous_time = annotation_data['annotation_time_minutes']
-                    print(f"Loading previous annotation time: {previous_time:.2f} minutes")
+            # Get the directory where we expect to find the annotations file
+            img_dir = os.path.dirname(daily_filepaths[0])
+            annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
+            
+            # Import the annotation timer
+            from phenotag.ui.components.annotation_timer import annotation_timer
+            
+            # Start the timer for this day
+            annotation_timer.start_timer(selected_day)
+            
+            # We'll now always load annotations from disk to ensure we have the latest data
+            # This is important when switching between tabs or when annotations are modified
+            print(f"Attempting to load annotations for day {selected_day} from disk")
+
+            # If annotations file exists, load it
+            if os.path.exists(annotations_file):
+                print(f"Loading annotations from file: {annotations_file}")
+                with open(annotations_file, 'r') as f:
+                    import yaml
+                    annotation_data = yaml.safe_load(f)
                     
-                    # Set the previous time as accumulated time for this day
-                    # Only if we don't already have accumulated time (to avoid double-counting)
-                    current_accumulated = annotation_timer.get_accumulated_time(selected_day)
-                    if current_accumulated == 0:
-                        annotation_timer.set_accumulated_time(selected_day, previous_time)
-                        print(f"Set accumulated time to previous time: {previous_time:.2f} minutes")
-                    else:
-                        print(f"Already have accumulated time: {current_accumulated:.2f} minutes. Not setting to previous: {previous_time:.2f}")
+                    # Load previous annotation time if available
+                    if 'annotation_time_minutes' in annotation_data:
+                        previous_time = annotation_data['annotation_time_minutes']
+                        print(f"Loading previous annotation time: {previous_time:.2f} minutes")
+                        
+                        # Set the previous time as accumulated time for this day
+                        # Only if we don't already have accumulated time (to avoid double-counting)
+                        current_accumulated = annotation_timer.get_accumulated_time(selected_day)
+                        if current_accumulated == 0:
+                            annotation_timer.set_accumulated_time(selected_day, previous_time)
+                            print(f"Set accumulated time to previous time: {previous_time:.2f} minutes")
+                        else:
+                            print(f"Already have accumulated time: {current_accumulated:.2f} minutes. Not setting to previous: {previous_time:.2f}")
 
-                # Clear existing annotations for files in this day
-                # (to avoid mixing with annotations from other days)
-                for filepath in daily_filepaths:
-                    if filepath in st.session_state.image_annotations:
-                        del st.session_state.image_annotations[filepath]
+                    # Clear existing annotations for files in this day
+                    # (to avoid mixing with annotations from other days)
+                    for filepath in daily_filepaths:
+                        if filepath in st.session_state.image_annotations:
+                            del st.session_state.image_annotations[filepath]
 
-                if 'annotations' in annotation_data:
-                    # Convert the loaded annotations to our format
-                    loaded_count = 0
-                    for img_name, img_annotations in annotation_data['annotations'].items():
-                        # Find the full path for this filename
-                        for filepath in daily_filepaths:
-                            if os.path.basename(filepath) == img_name:
-                                # Store annotations using full path as key 
-                                # Make sure img_annotations is in the expected format
-                                if isinstance(img_annotations, list):
-                                    # This is the correct format - a list of dictionaries, one per ROI
-                                    processed_annotations = []
-                                    
-                                    # Process each annotation to ensure it has all expected fields
-                                    for anno in img_annotations:
-                                        # Normalize annotation format
-                                        processed_anno = anno.copy()
+                    if 'annotations' in annotation_data:
+                        # Convert the loaded annotations to our format
+                        loaded_count = 0
+                        for img_name, img_annotations in annotation_data['annotations'].items():
+                            # Find the full path for this filename
+                            for filepath in daily_filepaths:
+                                if os.path.basename(filepath) == img_name:
+                                    # Store annotations using full path as key 
+                                    # Make sure img_annotations is in the expected format
+                                    if isinstance(img_annotations, list):
+                                        # This is the correct format - a list of dictionaries, one per ROI
+                                        processed_annotations = []
                                         
-                                        # Ensure we have all required fields with proper types
-                                        if 'roi_name' not in processed_anno:
-                                            processed_anno['roi_name'] = "ROI_00"
-                                        if 'discard' not in processed_anno:
-                                            processed_anno['discard'] = False
-                                        if 'snow_presence' not in processed_anno:
-                                            processed_anno['snow_presence'] = False
-                                        if 'flags' not in processed_anno or processed_anno['flags'] is None:
-                                            processed_anno['flags'] = []
+                                        # Process each annotation to ensure it has all expected fields
+                                        for anno in img_annotations:
+                                            # Normalize annotation format
+                                            processed_anno = anno.copy()
                                             
-                                        # Make sure flags is a list of strings
-                                        processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
-                                        
-                                        # Add to processed list
-                                        processed_annotations.append(processed_anno)
-                                        
-                                    # After processing, store the annotations
-                                    st.session_state.image_annotations[filepath] = processed_annotations
-                                    
-                                    # Now, directly set the widget states
-                                    for anno in processed_annotations:
-                                        roi_name = anno.get('roi_name')
-                                        roi_key = f"{roi_name}_{filepath}"
-                                        
-                                        # IMPORTANT: We don't set session state directly for widgets anymore
-                                        # as it causes a Streamlit warning. Instead, we'll use the default values
-                                        # when creating the widgets. The annotation data is already stored in
-                                        # st.session_state.image_annotations, which is used to set the defaults
-                                        # when creating the widgets.
-                                        pass
-                                        
-                                        # Old approach that caused warnings:
-                                        # flags_key = f"flags_{roi_key}"
-                                        # st.session_state[flags_key] = anno.get('flags', [])
-                                        # discard_key = f"discard_{roi_key}"
-                                        # st.session_state[discard_key] = anno.get('discard', False)
-                                        # snow_key = f"snow_{roi_key}"
-                                        # st.session_state[snow_key] = anno.get('snow_presence', False)
-                                    
-                                    loaded_count += 1
-                                    print(f"Loaded annotations for image: {img_name} - {len(processed_annotations)} ROIs")
-                                else:
-                                    # Try to convert to the expected format if needed
-                                    try:
-                                        converted_annotations = []
-                                        if isinstance(img_annotations, dict):
-                                            # If it's a dict of ROIs, convert to list
-                                            for roi_name, roi_data in img_annotations.items():
-                                                if isinstance(roi_data, dict):
-                                                    # Make sure roi_name is in the dict
-                                                    processed_anno = roi_data.copy()
-                                                    processed_anno['roi_name'] = roi_name
-                                                    
-                                                    # Normalize fields
-                                                    if 'discard' not in processed_anno:
-                                                        processed_anno['discard'] = False
-                                                    if 'snow_presence' not in processed_anno:
-                                                        processed_anno['snow_presence'] = False
-                                                    if 'flags' not in processed_anno or processed_anno['flags'] is None:
-                                                        processed_anno['flags'] = []
-                                                        
-                                                    # Make sure flags is a list of strings
-                                                    processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
-                                                    
-                                                    converted_annotations.append(processed_anno)
-                                                else:
-                                                    print(f"Warning: Unexpected ROI data format for {roi_name}: {type(roi_data)}")
+                                            # Ensure we have all required fields with proper types
+                                            if 'roi_name' not in processed_anno:
+                                                processed_anno['roi_name'] = "ROI_00"
+                                            if 'discard' not in processed_anno:
+                                                processed_anno['discard'] = False
+                                            if 'snow_presence' not in processed_anno:
+                                                processed_anno['snow_presence'] = False
+                                            if 'flags' not in processed_anno or processed_anno['flags'] is None:
+                                                processed_anno['flags'] = []
                                             
-                                            if converted_annotations:
+                                            # Make sure flags is a list of strings
+                                            processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
+                                            
+                                            # Add to processed list
+                                            processed_annotations.append(processed_anno)
+                                        
+                                        # After processing, store the annotations
+                                        st.session_state.image_annotations[filepath] = processed_annotations
+                                        
+                                        # Now, directly set the widget states
+                                        for anno in processed_annotations:
+                                            roi_name = anno.get('roi_name')
+                                            roi_key = f"{roi_name}_{filepath}"
+                                            
+                                            # IMPORTANT: We don't set session state directly for widgets anymore
+                                            # as it causes a Streamlit warning. Instead, we'll use the default values
+                                            # when creating the widgets. The annotation data is already stored in
+                                            # st.session_state.image_annotations, which is used to set the defaults
+                                            # when creating the widgets.
+                                            pass
+                                            
+                                            # Old approach that caused warnings:
+                                            # flags_key = f"flags_{roi_key}"
+                                            # st.session_state[flags_key] = anno.get('flags', [])
+                                            # discard_key = f"discard_{roi_key}"
+                                            # st.session_state[discard_key] = anno.get('discard', False)
+                                            # snow_key = f"snow_{roi_key}"
+                                            # st.session_state[snow_key] = anno.get('snow_presence', False)
+                                        
+                                        loaded_count += 1
+                                        print(f"Loaded annotations for image: {img_name} - {len(processed_annotations)} ROIs")
+                                        break
+                                    
+                            # If we didn't find a match, try to convert the format if needed
+                            try:
+                                converted_annotations = []
+                                if isinstance(img_annotations, dict):
+                                    # If it's a dict of ROIs, convert to list
+                                    for roi_name, roi_data in img_annotations.items():
+                                        if isinstance(roi_data, dict):
+                                            # Make sure roi_name is in the dict
+                                            processed_anno = roi_data.copy()
+                                            processed_anno['roi_name'] = roi_name
+                                            
+                                            # Normalize fields
+                                            if 'discard' not in processed_anno:
+                                                processed_anno['discard'] = False
+                                            if 'snow_presence' not in processed_anno:
+                                                processed_anno['snow_presence'] = False
+                                            if 'flags' not in processed_anno or processed_anno['flags'] is None:
+                                                processed_anno['flags'] = []
+                                                
+                                            # Make sure flags is a list of strings
+                                            processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
+                                            
+                                            converted_annotations.append(processed_anno)
+                                        else:
+                                            print(f"Warning: Unexpected ROI data format for {roi_name}: {type(roi_data)}")
+                                    
+                                    if converted_annotations:
+                                        for filepath in daily_filepaths:
+                                            if os.path.basename(filepath) == img_name:
                                                 st.session_state.image_annotations[filepath] = converted_annotations
                                                 
                                                 # We don't need to set widget states directly anymore
                                                 # The annotation data is already stored in st.session_state.image_annotations
                                                 # and will be used as defaults when creating the widgets
-                                                pass
                                                 
                                                 # Old approach that caused warnings:
                                                 # for anno in converted_annotations:
@@ -1039,18 +1075,22 @@ def load_day_annotations(selected_day, daily_filepaths):
                                                 
                                                 loaded_count += 1
                                                 print(f"Converted and loaded annotations for image: {img_name} - {len(converted_annotations)} ROIs")
-                                    except Exception as conv_error:
-                                        print(f"Error converting annotations for {img_name}: {str(conv_error)}")
-                                break
-                    
-                    print(f"Loaded annotations for {loaded_count} images from {annotations_file}")
-                    
-                    # Set a flag to indicate annotations were loaded
-                    st.session_state.annotations_just_loaded = True
+                                                break
+                            except Exception as conv_error:
+                                print(f"Error converting annotations for {img_name}: {str(conv_error)}")
+                        
+                        print(f"Loaded annotations for {loaded_count} images from {annotations_file}")
+                        
+                        # Set a flag to indicate annotations were loaded
+                        st.session_state.annotations_just_loaded = True
 
-                # Show notification that annotations were loaded
-                st.success(f"Loaded annotations for day {selected_day}", icon="✅")
-        else:
-            print(f"No annotations file found for day {selected_day} at {annotations_file}")
-    except Exception as e:
-        print(f"Error loading annotations for day change: {e}")
+                    # Show notification that annotations were loaded
+                    st.success(f"Loaded annotations for day {selected_day}", icon="✅")
+            else:
+                print(f"No annotations file found for day {selected_day} at {annotations_file}")
+        except Exception as e:
+            print(f"Error loading annotations for day change: {e}")
+            st.error(f"Error loading annotations: {e}", icon="❌")
+        finally:
+            # Always clear the loading flag
+            st.session_state.loading_annotations = False
