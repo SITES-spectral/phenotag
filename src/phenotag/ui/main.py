@@ -301,8 +301,18 @@ def main():
     
     with bottom_container:
         with MemoryTracker("Annotation Panel"):
+            # Always make sure ROIs are loaded before displaying the annotation panel
+            if selected_instrument and 'instrument_rois' not in st.session_state:
+                # Try to load ROIs before showing annotation panel
+                print("Explicitly loading ROIs before annotation panel display")
+                load_instrument_rois()
+            
             # Display annotation panel for the current image
             if 'current_filepath' in st.session_state and st.session_state.current_filepath:
+                # Print info about ROIs
+                if 'instrument_rois' in st.session_state:
+                    print(f"ROIs available for annotation: {list(st.session_state.instrument_rois.keys())}")
+                
                 display_annotation_panel(st.session_state.current_filepath)
     
     # Store important data in session state

@@ -51,6 +51,8 @@ def display_annotation_panel(current_filepath):
     # Get list of ROI names from loaded ROIs
     roi_names = []
     if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
+        # Print debugging info about ROIs
+        print(f"Found instrument_rois in session state: {list(st.session_state.instrument_rois.keys())}")
         roi_names = list(st.session_state.instrument_rois.keys())
 
     # Load config for quality flags
@@ -89,10 +91,14 @@ def display_annotation_panel(current_filepath):
             
         # Debug message for new annotations
         print(f"Created new default annotations for {os.path.basename(image_key)}")
+        print(f"Default annotation data: {annotation_data}")
+        print(f"ROI names used: {roi_names}")
     else:
         # Use existing annotations
         annotation_data = st.session_state.image_annotations[image_key]
         print(f"Loaded existing annotations for {os.path.basename(image_key)}")
+        print(f"Existing annotation data: {annotation_data}")
+        print(f"ROI names that should be available: {roi_names}")
         # Add debug info
         print(f"Annotation data type: {type(annotation_data)}")
         print(f"Annotation data contains {len(annotation_data)} items")
@@ -839,9 +845,35 @@ def save_all_annotations(force_save=False):
                                 if status_key not in st.session_state.annotation_status_map:
                                     st.session_state.annotation_status_map[status_key] = {}
                                     
-                                # Mark this day as completed in cache
-                                st.session_state.annotation_status_map[status_key][doy] = 'completed'
-                                print(f"Updated annotation status cache for day {doy}")
+                                # Check if all images in this day are annotated
+                                all_annotated = True
+                                day_filepaths = []
+                                
+                                # Get all filepaths for this day
+                                for img_path in st.session_state.image_annotations:
+                                    img_dir = os.path.dirname(img_path)
+                                    img_doy = os.path.basename(img_dir)
+                                    if img_doy == doy:
+                                        day_filepaths.append(img_path)
+                                
+                                # Check if we have all images for this day
+                                from phenotag.ui.components.image_display import get_filtered_file_paths
+                                all_day_filepaths = get_filtered_file_paths(
+                                    selected_station,
+                                    selected_instrument,
+                                    current_year,
+                                    doy
+                                )
+                                
+                                # If all images have annotations, mark as completed, otherwise in_progress
+                                if len(day_filepaths) < len(all_day_filepaths):
+                                    print(f"Not all images annotated for day {doy}: {len(day_filepaths)}/{len(all_day_filepaths)}")
+                                    st.session_state.annotation_status_map[status_key][doy] = 'in_progress'
+                                else:
+                                    print(f"All images annotated for day {doy}")
+                                    st.session_state.annotation_status_map[status_key][doy] = 'completed'
+                                
+                                print(f"Updated annotation status cache for day {doy} to {st.session_state.annotation_status_map[status_key][doy]}")
                                 
                                 # Save status to L1 parent folder
                                 try:
@@ -887,8 +919,10 @@ def save_all_annotations(force_save=False):
                                         if hist_status_key not in st.session_state.annotation_status_map:
                                             st.session_state.annotation_status_map[hist_status_key] = {}
                                             
-                                        st.session_state.annotation_status_map[hist_status_key][doy] = 'completed'
-                                        print(f"Updated historical annotation status cache for day {doy}")
+                                        # Use the same status as the main status key (completed or in_progress)
+                                        main_status = st.session_state.annotation_status_map[status_key][doy]
+                                        st.session_state.annotation_status_map[hist_status_key][doy] = main_status
+                                        print(f"Updated historical annotation status cache for day {doy} to {main_status}")
                         except Exception as e:
                             print(f"Error updating status cache: {str(e)}")
                         break

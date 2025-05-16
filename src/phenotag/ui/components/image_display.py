@@ -19,89 +19,17 @@ from phenotag.io_tools import (
 from phenotag.ui.calendar_component import format_day_range
 
 
-def create_image_dataframe(year_data, day, max_items=10):
-    """
-    Create a pandas DataFrame for the data_editor with image data and thumbnails.
-    
-    Args:
-        year_data: Dictionary with image data for a specific year
-        day: Day of year to display images for
-        max_items: Maximum number of items to include
-    
-    Returns:
-        pandas.DataFrame: DataFrame with image data and thumbnails
-    """
-    # Get the day's data
-    if day not in year_data:
-        return pd.DataFrame()
-    
-    day_data = year_data[day]
-    file_paths = list(day_data.keys())
-    
-    # Limit to max_items
-    if len(file_paths) > max_items:
-        file_paths = file_paths[:max_items]
-    
-    # Create data for the dataframe
-    data = []
-    
-    # Show a loading message
-    with st.spinner(f"Loading {len(file_paths)} images and generating thumbnails..."):
-        # Create an image processor instance once
-        processor = ImageProcessor()
-        
-        for file_path in file_paths:
-            file_info = day_data[file_path]
-            quality = file_info['quality']
-            
-            # Load image and generate thumbnail using ImageProcessor
-            if processor.load_image(file_path):
-                # Generate a thumbnail for this image (max size 100x100 pixels)
-                thumbnail = processor.create_thumbnail(max_size=(100, 100))
-            else:
-                thumbnail = None
-            
-            # Check if the image has been annotated
-            is_annotated = False
-            if 'image_annotations' in st.session_state:
-                is_annotated = file_path in st.session_state.image_annotations
-            
-            # Create a row for each file
-            row = {
-                'file_path': file_path,
-                'filename': os.path.basename(file_path),  # Store the filename for display
-                'thumbnail': thumbnail,  # Store the base64 thumbnail
-                'annotated': is_annotated,  # Flag to show if image has been annotated
-                'discard_file': quality['discard_file'],
-                'snow_presence': quality['snow_presence']
-            }
-            
-            # Add ROI data
-            for roi_name, roi_data in file_info['rois'].items():
-                row[f"{roi_name}_discard"] = roi_data['discard_roi']
-                row[f"{roi_name}_snow"] = roi_data['snow_presence']
-            
-            data.append(row)
-    
-    # Create DataFrame
-    df = pd.DataFrame(data)
-    
-    # Store the DataFrame in session state with a unique key based on year and day
-    key = f"images_{year_data}_{day}"
-    st.session_state[key] = df
-    
-    return df
 
 
 def display_image_list(daily_filepaths):
     """
-    Create a dataframe with filenames, dates and timestamps for image selection.
+    Create a set of radio buttons for image selection.
     
     Args:
         daily_filepaths (list): List of file paths for the selected day(s)
         
     Returns:
-        streamlit.DataFrame: The dataframe event object for handling selection
+        dict: A selection event dictionary that mimics the dataframe selection event
     """
     # Extract data from filenames using the pattern
     # Format: {location}_{station_acronym}_{instrument_id}_{year}_{day_of_year}_{timestamp}.jpg
@@ -156,54 +84,62 @@ def display_image_list(daily_filepaths):
         else:
             annotation_status.append(False)
     
-    # Create a dataframe with proper index to avoid PyArrow conversion issues
-    df = pd.DataFrame(
-        data={
-            # Keep the same data in the same columns
-            "DOY": doys,          # Column with DOY values
-            "Date": dates,        # Column with Date values
-            "Time": timestamps,   # Column with Time values
-            "Annotated": annotation_status,  # Column for annotation status
-            "_index": list(range(len(daily_filepaths)))  # Add proper numeric index
-        }
-    )
-    # Set the index
-    df.set_index("_index", inplace=True)
-
-    # Show the interactive dataframe with row selection
-    event = st.dataframe(
-        df,
-        column_config={
-            # Swap the display names but keep the same data mapping
-            "DOY": st.column_config.TextColumn(
-                "Date",     # First column shows DOY values with "Date" label
-                help="Calendar date (YYYY-MM-DD)",
-                width="small"
-            ),
-            "Date": st.column_config.TextColumn(
-                "DOY",      # Second column shows Date values with "DOY" label
-                help="Day of Year (1-365/366)",
-                width="small"
-            ),
-            "Time": st.column_config.TextColumn(
-                "Time",
-                help="Click to select this file",
-                width="small"
-            ),
-            "Annotated": st.column_config.CheckboxColumn(
-                "✓",       # Column shows a checkmark for annotated images
-                help="Indicates if the image has been annotated",
-                width="small",
-                disabled=True  # User can't modify this directly
-            )
-        },
-        use_container_width=True,
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row"
-    )
+    # Create a list of radio options with formatted display labels
+    radio_options = []
+    for i, (filename, doy, date, time, annotated) in enumerate(zip(filenames, doys, dates, timestamps, annotation_status)):
+        # Create a readable label for each radio option - just date, time and annotation status
+        annotation_mark = "✓ " if annotated else ""
+        label = f"{annotation_mark}{date} - {time}"
+        radio_options.append((label, i))  # Store tuple of (label, index)
     
-    return event
+    # Initialize session state for selected index if it doesn't exist
+    if 'selected_image_index' not in st.session_state:
+        st.session_state.selected_image_index = 0 if radio_options else None
+    
+    # Create a selection from radio buttons
+    st.markdown("#### Image Selection")
+    
+    # Check if we have any options
+    selection = None
+    if radio_options:
+        # Find the current value to pre-select
+        default_index = st.session_state.selected_image_index
+        if default_index is not None and default_index < len(radio_options):
+            default_value = radio_options[default_index][0]
+        else:
+            default_value = radio_options[0][0] if radio_options else None
+        
+        # Create the radio buttons
+        selected_option = st.radio(
+            "Select an image:",
+            [option[0] for option in radio_options],
+            index=0 if default_value is not None else None,
+            key="image_radio_selector",
+            label_visibility="collapsed"
+        )
+        
+        # Find the selected index
+        selected_index = None
+        for option in radio_options:
+            if option[0] == selected_option:
+                selected_index = option[1]
+                break
+        
+        # Update session state with the selected index
+        if selected_index is not None and selected_index != st.session_state.selected_image_index:
+            st.session_state.selected_image_index = selected_index
+            
+        # Create a selection event that mimics the dataframe selection event
+        if selected_index is not None:
+            selection = type('obj', (object,), {
+                'selection': type('obj', (object,), {
+                    'rows': [selected_index]
+                })
+            })
+    else:
+        st.info("No images available for selection.")
+    
+    return selection
 
 
 def display_selected_image(event, daily_filepaths):
@@ -211,7 +147,7 @@ def display_selected_image(event, daily_filepaths):
     Display the selected image with ROI overlays as needed.
     
     Args:
-        event (streamlit.DataFrame): Event from the dataframe selection
+        event: Event from the selection (can be radio button or dataframe selection)
         daily_filepaths (list): List of file paths for the selected day(s)
         
     Returns:
@@ -219,12 +155,24 @@ def display_selected_image(event, daily_filepaths):
     """
     filepath = None
     
-    # Create event handler for image selection
-    if event and event.selection.rows:
+    # Use the selected_image_index from session state if available
+    index = None
+    
+    # First check if we have a radio button selection in session state
+    if 'selected_image_index' in st.session_state and st.session_state.selected_image_index is not None:
+        index = st.session_state.selected_image_index
+    # Fall back to the event selection if provided (for backward compatibility)
+    elif event and hasattr(event, 'selection') and hasattr(event.selection, 'rows') and event.selection.rows:
         try:
             # Convert to integer index (it might be a string from the dataframe)
             index = int(event.selection.rows[0])
-
+        except (ValueError, TypeError) as e:
+            st.error(f"Error processing selection from event: {e}")
+            index = None
+    
+    # Process the selection if we have a valid index
+    if index is not None:
+        try:
             # Ensure index is in range
             if 0 <= index < len(daily_filepaths):
                 filepath = daily_filepaths[index]
@@ -344,12 +292,18 @@ def display_selected_image(event, daily_filepaths):
 
                     # Display the image
                     st.image(img_rgb, caption=caption, use_container_width=True)
+                    
+                    # Make sure filepath is stored in session state for other components
+                    st.session_state.current_filepath = filepath
+                    # Print debugging info
+                    print(f"Selected image: {filepath}")
+                    print(f"Image stored in session state as current_filepath")
                 else:
                     st.error(f"Failed to process image: {filepath}")
             else:
                 st.error(f"Failed to load image: {filepath}")
     else:
-        st.info("No image selected. Click on a row to view an image.")
+        st.info("No image selected. Select an image to view it.")
         
     return filepath
 
@@ -568,6 +522,29 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                         st.write(f"{len(daily_filepaths)} images available for {selection_text}")
                     else:
                         st.write(f"{len(daily_filepaths)} images available for day {selected_day}")
+                    
+                    # Add navigation buttons below the radio buttons for Previous/Next
+                    if len(daily_filepaths) > 1:
+                        col1, col2 = st.columns(2)
+                        
+                        # Current index
+                        current_index = st.session_state.get('selected_image_index', 0)
+                        
+                        with col1:
+                            if st.button("⬅️ Previous", 
+                                        disabled=current_index <= 0,
+                                        use_container_width=True):
+                                # Move to previous image
+                                st.session_state.selected_image_index = max(0, current_index - 1)
+                                st.rerun()
+                                
+                        with col2:
+                            if st.button("Next ➡️", 
+                                        disabled=current_index >= len(daily_filepaths) - 1,
+                                        use_container_width=True):
+                                # Move to next image
+                                st.session_state.selected_image_index = min(len(daily_filepaths) - 1, current_index + 1)
+                                st.rerun()
 
                 # Display the selected image in the main column
                 with main_col:
