@@ -23,7 +23,7 @@ from phenotag.ui.components.flags_processor import FlagsProcessor
 
 def display_annotation_panel(current_filepath):
     """
-    Display and manage ROI annotation panel.
+    Display and manage ROI annotation panel in a popup.
     
     Args:
         current_filepath (str): Path to the current image
@@ -37,16 +37,221 @@ def display_annotation_panel(current_filepath):
     # Initialize the timer state first to ensure it's available
     annotation_timer.initialize_session_state()
     
-    # Record user interaction
-    annotation_timer.record_interaction()
+    # Create a unique key for this image
+    image_key = current_filepath
     
-    # Check for inactivity (will pause the timer if needed)
-    annotation_timer.check_inactivity()
+    # Check if we have any annotations for this image
+    has_annotations = False
+    if 'image_annotations' in st.session_state and image_key in st.session_state.image_annotations:
+        has_annotations = True
+    
+    # Create a row for annotation status and buttons
+    if has_annotations:
+        st.success("Annotated", icon="✅")
+    else:
+        # Show button to mark as completed without annotation
+        if st.button("No annotation needed", use_container_width=True):
+            # Create default annotations with "not needed" flag
+            create_default_annotations(current_filepath)
+            
+            # Force save
+            save_all_annotations(force_save=True)
+            
+            # Rerun to update the UI
+            st.rerun()
+    
+    # Add the annotation panel as a popover
+    with st.popover("Annotation Panel"):
+        # Record user interaction when annotation is viewed
+        annotation_timer.record_interaction()
+        
+        # Add the reset all annotations button at the top
+        if st.button("🔄 Reset All Annotations", key="reset_all_annotations", use_container_width=True):
+            # Get the current day
+            img_dir = os.path.dirname(current_filepath)
+            current_day = os.path.basename(img_dir)
+            
+            # Get all images for this day
+            daily_filepaths = []
+            for img_path in st.session_state.image_annotations:
+                img_dir = os.path.dirname(img_path)
+                img_doy = os.path.basename(img_dir)
+                if img_doy == current_day:
+                    daily_filepaths.append(img_path)
+            
+            # Clear annotations for all images in this day
+            for filepath in daily_filepaths:
+                if filepath in st.session_state.image_annotations:
+                    del st.session_state.image_annotations[filepath]
+                    
+            # Show confirmation
+            st.success(f"Reset all annotations for day {current_day}")
+            
+            # Rerun to update UI
+            st.rerun()
+        
+        # Now include the actual annotation interface in the popup
+        _create_annotation_interface(current_filepath)
+
+
+def create_default_annotations(current_filepath):
+    """
+    Create default annotations for an image marked as "not needed".
+    
+    Args:
+        current_filepath (str): Path to the current image
+    """
+    if not current_filepath or 'image_annotations' not in st.session_state:
+        return
+        
+    # Get ROI names
+    roi_names = []
+    if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
+        roi_names = list(st.session_state.instrument_rois.keys())
+    
+    # Force ROI loading if we need to create annotations but don't have ROIs loaded
+    if not roi_names and 'selected_instrument' in st.session_state:
+        # Try to load instrument ROIs
+        try:
+            from phenotag.ui.main import load_instrument_rois
+            if load_instrument_rois():
+                print("ROIs loaded automatically for default annotations")
+                # Update roi_names from the freshly loaded ROIs
+                if 'instrument_rois' in st.session_state:
+                    roi_names = list(st.session_state.instrument_rois.keys())
+        except Exception as e:
+            print(f"Error loading ROIs: {str(e)}")
+    
+    # Create default annotations
+    annotation_data = [
+        {
+            "roi_name": "ROI_00",  #(Default - Full Image)
+            "discard": False,
+            "snow_presence": False,
+            "flags": [],  # Empty list - no actual quality flags
+            "not_needed": True,  # Separate field for not needed status
+        }
+    ]
+    
+    # Add an entry for each custom ROI
+    for roi_name in roi_names:
+        annotation_data.append({
+            "roi_name": roi_name,
+            "discard": False,
+            "snow_presence": False,
+            "flags": [],  # Empty list - no actual quality flags
+            "not_needed": True,  # Separate field for not needed status
+        })
+    
+    # Store in session state
+    st.session_state.image_annotations[current_filepath] = annotation_data
+    
+    print(f"Created default 'not needed' annotations for {os.path.basename(current_filepath)}")
+
+
+# This function has been merged into display_annotation_panel
+    
+    
+def create_annotation_summary(current_filepath):
+    """
+    Create a summary of annotations for the current image to display in the main container.
+    
+    Args:
+        current_filepath (str): Path to the current image
+        
+    Returns:
+        dict: Summary data including dataframe and metrics
+    """
+    if not current_filepath or 'image_annotations' not in st.session_state:
+        return None
     
     # Create a unique key for this image
     image_key = current_filepath
     
+    # Check if we have annotations for this image
+    if image_key not in st.session_state.image_annotations:
+        return None
     
+    # Get the annotation data
+    annotation_data = st.session_state.image_annotations[image_key]
+    
+    # Load config for quality flags
+    config = load_config_files()
+    
+    # Initialize the flags processor with the flags data
+    flags_processor = FlagsProcessor(config.get('flags', {}))
+    
+    # Get the formatted flag options for UI display
+    flag_options = flags_processor.get_flag_options()
+    
+    # Organize flags by category for better display
+    flags_by_category = {}
+    for option in flag_options:
+        category = option.get("category", "Other")
+        if category not in flags_by_category:
+            flags_by_category[category] = []
+        flags_by_category[category].append((option["value"], f"{option['value']} ({category})"))
+    
+    # Build summary data
+    summary_data = []
+    
+    for annotation in annotation_data:
+        roi_name = annotation["roi_name"]
+        discard = annotation.get("discard", False)
+        snow_presence = annotation.get("snow_presence", False)
+        flags = annotation.get("flags", [])
+        
+        # Format the flags as a readable string with categories
+        formatted_flags = []
+        for flag in flags:
+            # Find the display name with category
+            for category, options in flags_by_category.items():
+                for value, label in options:
+                    if value == flag:
+                        formatted_flags.append(label)
+                        break
+        
+        flags_str = ", ".join(formatted_flags) if formatted_flags else "None"
+        
+        # Add to summary data
+        summary_data.append({
+            "Filename": os.path.basename(current_filepath),
+            "ROI": roi_name,
+            "Discard": "Yes" if discard else "No",
+            "Snow Present": "Yes" if snow_presence else "No",
+            "No annotation needed": "Yes" if annotation.get("not_needed", False) else "No",
+            "Flag Count": len(flags),
+            "Flags": flags_str
+        })
+    
+    # Create summary metrics
+    metrics = {}
+    if summary_data:
+        total_rois = len(summary_data)
+        metrics["total_rois"] = total_rois
+        
+        discarded_rois = sum(1 for item in summary_data if item["Discard"] == "Yes")
+        metrics["discarded_rois"] = discarded_rois
+        metrics["discarded_pct"] = f"{100 * discarded_rois / total_rois:.1f}%" if total_rois > 0 else "0%"
+        
+        flagged_rois = sum(1 for item in summary_data if item["Flag Count"] > 0)
+        metrics["flagged_rois"] = flagged_rois
+        metrics["flagged_pct"] = f"{100 * flagged_rois / total_rois:.1f}%" if total_rois > 0 else "0%"
+    
+    return {
+        "summary_data": summary_data,
+        "metrics": metrics
+    }
+
+def _create_annotation_interface(current_filepath):
+    """
+    Internal function to create the ROI annotation interface.
+    
+    Args:
+        current_filepath (str): Path to the current image
+    """
+    # Create a unique key for this image
+    image_key = current_filepath
     
     # Get list of ROI names from loaded ROIs
     roi_names = []
@@ -54,7 +259,21 @@ def display_annotation_panel(current_filepath):
         # Print debugging info about ROIs
         print(f"Found instrument_rois in session state: {list(st.session_state.instrument_rois.keys())}")
         roi_names = list(st.session_state.instrument_rois.keys())
-
+    
+    # Force ROI loading if not loaded yet
+    if not roi_names and 'selected_instrument' in st.session_state:
+        # Try to load instrument ROIs
+        try:
+            from phenotag.ui.main import load_instrument_rois
+            if load_instrument_rois():
+                print("ROIs loaded automatically for annotation")
+                # Update roi_names from the freshly loaded ROIs
+                if 'instrument_rois' in st.session_state:
+                    roi_names = list(st.session_state.instrument_rois.keys())
+                    print(f"ROI names updated: {roi_names}")
+        except Exception as e:
+            print(f"Error loading ROIs: {str(e)}")
+            
     # Load config for quality flags
     config = load_config_files()
     
@@ -77,6 +296,7 @@ def display_annotation_panel(current_filepath):
                 "discard": False,
                 "snow_presence": False,
                 "flags": [],  # Empty list for no flags selected - must be list for ListColumn
+                "not_needed": False  # Not marked as "not needed" by default
             }
         ]
 
@@ -87,6 +307,7 @@ def display_annotation_panel(current_filepath):
                 "discard": False,
                 "snow_presence": False,
                 "flags": [],  # Empty list for no flags selected - must be list for ListColumn
+                "not_needed": False  # Not marked as "not needed" by default
             })
             
         # Debug message for new annotations
@@ -99,30 +320,7 @@ def display_annotation_panel(current_filepath):
         print(f"Loaded existing annotations for {os.path.basename(image_key)}")
         print(f"Existing annotation data: {annotation_data}")
         print(f"ROI names that should be available: {roi_names}")
-        # Add debug info
-        print(f"Annotation data type: {type(annotation_data)}")
-        print(f"Annotation data contains {len(annotation_data)} items")
-        if len(annotation_data) > 0:
-            print(f"First item type: {type(annotation_data[0])}")
-            print(f"First item keys: {annotation_data[0].keys() if isinstance(annotation_data[0], dict) else 'Not a dict'}")
-            
-        if not isinstance(annotation_data, list):
-            print(f"WARNING: annotations are not in list format. Converting to list...")
-            # Try to convert to list format
-            try:
-                if isinstance(annotation_data, dict):
-                    converted_data = []
-                    for roi_name, roi_data in annotation_data.items():
-                        if isinstance(roi_data, dict):
-                            roi_data['roi_name'] = roi_name
-                            converted_data.append(roi_data)
-                    annotation_data = converted_data
-                    # Update in session state
-                    st.session_state.image_annotations[image_key] = annotation_data
-                    print(f"Successfully converted annotations to list format with {len(annotation_data)} items")
-            except Exception as e:
-                print(f"Error converting annotations: {str(e)}")
-
+        
     # Add the flag selector column for UI purposes (not stored in annotations)
     for row in annotation_data:
         row['_flag_selector'] = ""  # Empty by default, not stored permanently
@@ -130,562 +328,216 @@ def display_annotation_panel(current_filepath):
     # Convert to DataFrame
     annotation_df = pd.DataFrame(annotation_data)
     
-    annotation_col, save_col = st.columns([2, 1])
-    # Add batch update controls
-
+    # Add a title for the annotation panel
+    st.markdown("### ROI Annotations")
+    st.caption("Use the tabs below to annotate each Region of Interest")
     
-    with annotation_col:
-        # Add a title for the annotation panel
-        st.markdown("### ROI Annotations")
-        st.caption("Use the tabs below to annotate each Region of Interest")
-        
-        # Organize flags by category for the multiselect
-        flags_by_category = {}
-        for option in flag_options:
-            category = option.get("category", "Other")
-            if category not in flags_by_category:
-                flags_by_category[category] = []
-            flags_by_category[category].append((option["value"], f"{option['value']} ({category})"))
-        
-        # Create a list of all ROI names for tabs
-        all_roi_names = [row["roi_name"] for row in annotation_data]
-        
-        # Create tabs for each ROI plus a Summary tab
-        roi_tabs = st.tabs(all_roi_names + ["Summary"])
-        
-        # Dictionary to track updated flag selections for each ROI
-        updated_flag_selections = {}
-        
-        # Process each ROI in its own tab, excluding the summary tab
-        summary_tab = roi_tabs[-1]  # Last tab is the summary tab
-        roi_tabs_without_summary = roi_tabs[:-1]  # All tabs except the last one
-        
-        for idx, (roi_name, roi_tab) in enumerate(zip(all_roi_names, roi_tabs_without_summary)):
-            with roi_tab:
-                # Get the current ROI data
-                roi_data = annotation_data[idx]
+    # Organize flags by category for the multiselect
+    flags_by_category = {}
+    for option in flag_options:
+        category = option.get("category", "Other")
+        if category not in flags_by_category:
+            flags_by_category[category] = []
+        flags_by_category[category].append((option["value"], f"{option['value']} ({category})"))
+    
+    # Create a list of all ROI names for tabs
+    all_roi_names = [row["roi_name"] for row in annotation_data]
+    
+    # Create tabs for each ROI
+    roi_tabs = st.tabs(all_roi_names)
+    
+    # Dictionary to track updated flag selections for each ROI
+    updated_flag_selections = {}
+    
+    # Add a button to copy ROI_00 settings to all other ROIs
+    if "ROI_00" in all_roi_names and len(all_roi_names) > 1:
+        # Find ROI_00 data
+        roi00_data = next((data for data in annotation_data if data["roi_name"] == "ROI_00"), None)
+        if roi00_data:
+            # Create a button to copy ROI_00 settings to all other ROIs
+            if st.button("📋 Copy ROI_00 Settings to All ROIs", use_container_width=True):
+                # Apply ROI_00 settings to all other ROIs
+                for i, data in enumerate(annotation_data):
+                    if data["roi_name"] != "ROI_00":
+                        # Copy discard, snow_presence, and flags from ROI_00
+                        annotation_data[i]["discard"] = roi00_data["discard"]
+                        annotation_data[i]["snow_presence"] = roi00_data["snow_presence"]
+                        annotation_data[i]["flags"] = roi00_data["flags"].copy()
                 
-                # Create a unique key based on roi_name and image_key
-                roi_key = f"{roi_name}_{image_key}"
+                # Show success message
+                st.success(f"Applied ROI_00 settings to all {len(all_roi_names)-1} ROIs")
                 
-                # Create columns for the ROI settings
-                roi_col1, roi_col2 = st.columns([1, 1])
+                # Force save
+                st.session_state.image_annotations[image_key] = annotation_data
                 
-                # Initialize key variables
-                roi00_apply_key = f"apply_all_ROI_00_{image_key}"
-                roi00_flags_key = f"roi00_flags_{image_key}"
-                roi00_discard_key = f"roi00_discard_{image_key}"
-                roi00_snow_key = f"roi00_snow_{image_key}"
-                
-                # Default to current flags and settings
-                current_flags = roi_data.get("flags", [])
-                current_discard = roi_data.get("discard", False)
-                current_snow = roi_data.get("snow_presence", False)
-                
-                # We no longer apply settings automatically from ROI_00 at render time
-                # This is now handled as a one-time copy operation when the button is clicked
-                # Each ROI maintains its own state after the copy
-                apply_from_roi00 = False
-                
-                # Set default apply_to_all flag
-                apply_to_all = False
-                if roi_name == "ROI_00":
-                    # Get the apply_all state from session
-                    apply_to_all = st.session_state.get(f"apply_all_{roi_key}", False)
-                
-                with roi_col1:
-                    # Create checkbox for discard
-                    discard = st.checkbox(
-                        "Discard", 
-                        value=current_discard,
-                        key=f"discard_{roi_key}",
-                        help="Mark this image/ROI as not suitable for analysis"
-                    )
-                    
-                    # Create checkbox for snow presence
-                    snow_presence = st.checkbox(
-                        "Snow Present", 
-                        value=current_snow,
-                        key=f"snow_{roi_key}",
-                        help="Mark if snow is present in this ROI"
-                    )
-                
-                with roi_col2:
-                    # Create multiselect for flags with categories
-                    # Flatten the options for the multiselect
-                    multiselect_options = []
-                    for category in sorted(flags_by_category.keys()):
-                        multiselect_options.extend(flags_by_category[category])
-                    
-                    # We no longer show the ROI_00 indicator since settings are now independent
-                    
-                    # Select flags with this multiselect
-                    selected_flags = st.multiselect(
-                        "Quality Flags",
-                        options=[value for value, _ in multiselect_options],
-                        format_func=lambda x: next((label for value, label in multiselect_options if value == x), x),
-                        default=current_flags,
-                        key=f"flags_{roi_key}",
-                        help="Select quality flags applicable to this ROI"
-                    )
-                    
-                    # For ROI_00, update the stored flags when they change
-                    if roi_name == "ROI_00" and selected_flags != st.session_state.get(roi00_flags_key, []):
-                        st.session_state[roi00_flags_key] = selected_flags
-                
-                # Now add the "Apply to all ROIs" button after both columns
-                # to ensure selected_flags is already defined
-                # Store the selected flags and settings for ALL ROIs
-                updated_flag_selections[roi_name] = {
-                    "discard": discard,
-                    "snow_presence": snow_presence,
-                    "flags": selected_flags,
-                    "apply_to_all": apply_to_all if roi_name == "ROI_00" else False
-                }
-                
-                # ROI_00 specific actions
-                if roi_name == "ROI_00":
-                    # Add checkboxes for what to copy - all False by default
-                    st.caption("Choose which settings to copy to other ROIs:")
-                    copy_cols = st.columns(3)
-                    with copy_cols[0]:
-                        st.checkbox("Copy Flags", value=False, key=f"copy_flags_{roi_key}")
-                    with copy_cols[1]:
-                        st.checkbox("Copy Discard", value=False, key=f"copy_discard_{roi_key}")
-                    with copy_cols[2]:
-                        st.checkbox("Copy Snow", value=False, key=f"copy_snow_{roi_key}")
-                    
-                    # Create a button to apply ROI_00 settings to all other ROIs
-                    if st.button(
-                        "Copy Selected ROI_00 Settings to All ROIs", 
-                        key=f"apply_all_button_{roi_key}",
-                        help="Copy the selected settings (flags, discard, snow) from ROI_00 to all other ROIs. This is a one-time copy that still allows individual ROI customization.",
-                        type="primary",
-                        use_container_width=True
-                    ):
-                        try:
-                            # Directly update the annotations for all other ROIs in memory
-                            # Get current annotations for this image
-                            if image_key in st.session_state.image_annotations:
-                                current_annotations = st.session_state.image_annotations[image_key]
-                                
-                                # Log the settings being applied
-                                print(f"[ROI_00 Settings] Applying settings to all ROIs for {os.path.basename(image_key)}")
-                                print(f"[ROI_00 Settings] Flags: {selected_flags}")
-                                print(f"[ROI_00 Settings] Discard: {discard}")
-                                print(f"[ROI_00 Settings] Snow Presence: {snow_presence}")
-                                
-                                # Update annotations for all ROIs except ROI_00
-                                for anno in current_annotations:
-                                    if anno.get("roi_name") != "ROI_00":
-                                        # Only update the fields the user wants (based on checkboxes)
-                                        if st.session_state.get(f"copy_flags_{roi_key}", True):
-                                            anno["flags"] = selected_flags.copy()
-                                        if st.session_state.get(f"copy_discard_{roi_key}", True):
-                                            anno["discard"] = discard
-                                        if st.session_state.get(f"copy_snow_{roi_key}", True):
-                                            anno["snow_presence"] = snow_presence
-                                
-                                # Store updated annotations back to session state
-                                st.session_state.image_annotations[image_key] = current_annotations
-                            
-                            # We no longer need to set a persistent flag - this will just be a one-time operation
-                            # that copies the current ROI_00 settings to the other ROIs without locking them
-                            print(f"[ROI_00 Settings] This is now a one-time copy operation (no persistent lock)")
-                            
-                            # Clear any existing apply flags to ensure they don't persist
-                            if roi00_apply_key in st.session_state:
-                                del st.session_state[roi00_apply_key]
-                                print(f"[ROI_00 Settings] Cleared ROI_00 apply flag: {roi00_apply_key}")
-                            
-                            # Get the list of ROIs that will receive these settings
-                            affected_rois = [r for r in all_roi_names if r != "ROI_00"]
-                            print(f"[ROI_00 Settings] Settings will be applied to {len(affected_rois)} ROIs: {', '.join(affected_rois)}")
-                            
-                            # Save annotations to ensure they're persisted
-                            try:
-                                print(f"[ROI_00 Settings] Saving annotations...")
-                                save_all_annotations(force_save=True)
-                                print(f"[ROI_00 Settings] Annotations saved successfully")
-                            except Exception as save_error:
-                                print(f"[ROI_00 Settings] Error during save: {str(save_error)}")
-                                st.error(f"Error saving annotations: {str(save_error)}", icon="⚠️")
-                                # Continue with the process even if save fails
-                            
-                            # Show a success message with details on what was copied
-                            roi_count = len(affected_rois)
-                            copied_items = []
-                            if st.session_state.get(f"copy_flags_{roi_key}", True):
-                                copied_items.append("flags")
-                            if st.session_state.get(f"copy_discard_{roi_key}", True):
-                                copied_items.append("discard status")
-                            if st.session_state.get(f"copy_snow_{roi_key}", True):
-                                copied_items.append("snow presence")
-                                
-                            copied_str = ", ".join(copied_items)
-                            st.success(f"Copied ROI_00 {copied_str} to {roi_count} other ROIs and saved", icon="✅")
-                            
-                            # Force a rerun to update all tabs
-                            print(f"[ROI_00 Settings] Waiting briefly before UI refresh...")
-                            time.sleep(1)  # Brief pause to ensure save completes
-                            print(f"[ROI_00 Settings] Triggering UI refresh...")
-                            st.rerun()
-                        except Exception as e:
-                            # Provide detailed error information
-                            print(f"[ROI_00 Settings] ERROR: {str(e)}")
-                            
-                            # Show error message to user
-                            st.error(f"Error applying ROI_00 settings: {str(e)}", icon="⚠️")
-                            
-                            # Try to reset the state to prevent issues
-                            try:
-                                st.session_state[f"apply_all_{roi_key}"] = False
-                                st.session_state[roi00_apply_key] = False
-                                print(f"[ROI_00 Settings] Reset apply flags after error")
-                            except Exception:
-                                pass
-                                                
-                # Show current flags
-                if not selected_flags:
-                    st.info("No flags selected for this ROI", icon="ℹ️")
-                
-        # Display the summary tab
-        with summary_tab:
-            st.write("### Annotation Summary")
-            st.caption("Overview of all ROI annotations for this image")
+                # Rerun to update UI
+                st.rerun()
+    
+    # Process each ROI in its own tab
+    for idx, (roi_name, roi_tab) in enumerate(zip(all_roi_names, roi_tabs)):
+        with roi_tab:
+            # Get the current ROI data
+            roi_data = annotation_data[idx]
             
-            # Build a summary dataframe with formatted data
-            summary_data = []
+            # Create a unique key based on roi_name and image_key
+            roi_key = f"{roi_name}_{image_key}_popup"
             
-            for roi_name in all_roi_names:
-                if roi_name in updated_flag_selections:
-                    # Get the selections made in the UI
-                    selections = updated_flag_selections[roi_name]
-                    
-                    # Each ROI now maintains its own settings after the copy operation
-                    # from ROI_00, so we just use the current selections directly
-                    display_flags = selections["flags"]
-                    display_discard = selections["discard"]
-                    display_snow = selections["snow_presence"]
-                    
-                    # Format the flags as a readable string with categories
-                    formatted_flags = []
-                    for flag in display_flags:
-                        # Find the display name with category
-                        for category, options in flags_by_category.items():
-                            for value, label in options:
-                                if value == flag:
-                                    formatted_flags.append(label)
-                                    break
-                    
-                    flags_str = ", ".join(formatted_flags) if formatted_flags else "None"
-                    
-                    # Add to summary data
-                    summary_data.append({
-                        "ROI": roi_name,
-                        "Discard": "Yes" if display_discard else "No",
-                        "Snow Present": "Yes" if display_snow else "No",
-                        "Flag Count": len(display_flags),
-                        "Flags": flags_str
-                    })
+            # Create columns for the ROI settings
+            roi_col1, roi_col2 = st.columns([1, 1])
             
-            # Create and display the summary dataframe
-            if summary_data:
-                summary_df = pd.DataFrame(summary_data)
+            with roi_col1:
+                # Create checkbox for discard
+                discard = st.checkbox(
+                    "Discard", 
+                    value=roi_data.get('discard', False),
+                    key=f"discard_{roi_key}",
+                    help="Mark this image/ROI as not suitable for analysis"
+                )
                 
-                # Style the dataframe
+                # Create checkbox for snow presence
+                snow_presence = st.checkbox(
+                    "Snow Present", 
+                    value=roi_data.get('snow_presence', False),
+                    key=f"snow_{roi_key}",
+                    help="Mark if snow is present in this ROI"
+                )
+                
+                # Create checkbox for not needed status
+                not_needed = st.checkbox(
+                    "No annotation needed", 
+                    value=roi_data.get('not_needed', False),
+                    key=f"not_needed_{roi_key}",
+                    help="Mark if this ROI doesn't need detailed annotation"
+                )
+            
+            with roi_col2:
+                # Flatten the options for the multiselect
+                multiselect_options = []
+                for category in sorted(flags_by_category.keys()):
+                    multiselect_options.extend(flags_by_category[category])
+                
+                # Select flags with this multiselect
+                selected_flags = st.multiselect(
+                    "Quality Flags",
+                    options=[value for value, _ in multiselect_options],
+                    format_func=lambda x: next((label for value, label in multiselect_options if value == x), x),
+                    default=roi_data.get('flags', []),
+                    key=f"flags_{roi_key}",
+                    help="Select quality flags applicable to this ROI"
+                )
+            
+            # Store the selected flags and settings
+            updated_flag_selections[roi_name] = {
+                "discard": discard,
+                "snow_presence": snow_presence,
+                "flags": selected_flags,
+                "not_needed": not_needed
+            }
+    
+    # Process the UI state to update annotations
+    updated_annotations = []
+    for idx, roi_name in enumerate(all_roi_names):
+        if roi_name in updated_flag_selections:
+            selections = updated_flag_selections[roi_name]
+            
+            # Build the ROI data with all settings
+            updated_annotations.append({
+                "roi_name": roi_name,
+                "discard": selections["discard"],
+                "snow_presence": selections["snow_presence"],
+                "flags": selections["flags"],
+                "not_needed": selections["not_needed"]
+            })
+        else:
+            # Fallback to original data if not updated
+            updated_annotations.append(annotation_data[idx])
+    
+    # Save the updated annotations to session state
+    st.session_state.image_annotations[image_key] = updated_annotations
+    
+    # Save and close button at the bottom
+    st.button("💾 Save & Close", 
+              type="primary", 
+              use_container_width=True,
+              key="save_annotations_popup",
+              on_click=lambda: _handle_popup_save(image_key))
+
+
+def display_annotation_completion_status(selected_day):
+    """
+    Display a progress bar and metrics showing annotation completion status.
+    
+    Args:
+        selected_day (str): The currently selected day
+    """
+    if not selected_day or 'annotation_completion' not in st.session_state:
+        return
+    
+    # Check if we have completion data for this day
+    if selected_day not in st.session_state.annotation_completion:
+        return
+    
+    # Get the completion data
+    completion_data = st.session_state.annotation_completion[selected_day]
+    expected = completion_data['expected']
+    annotated = completion_data['annotated']
+    percentage = completion_data['percentage']
+    
+    # Create an expandable section for annotation progress
+    with st.expander("Annotation Progress", expanded=True):
+        # Display a progress bar
+        st.progress(percentage / 100)
+        
+        # Create columns for metrics
+        col1, col2, col3 = st.columns(3)
+        
+        # Display metrics
+        with col1:
+            st.metric("Expected Images", expected)
+        
+        with col2:
+            st.metric("Annotated Images", annotated)
+        
+        with col3:
+            st.metric("Completion", f"{percentage}%")
+        
+        # If file_status is available, show a table of file status
+        if 'file_status' in completion_data and completion_data['file_status']:
+            st.subheader("Individual Image Status")
+            
+            # Prepare data for the table
+            status_data = []
+            for filename, status in completion_data['file_status'].items():
+                status_data.append({
+                    "Filename": filename,
+                    "Status": status.capitalize()
+                })
+            
+            # Create a dataframe and display it
+            if status_data:
+                status_df = pd.DataFrame(status_data)
                 st.dataframe(
-                    summary_df,
+                    status_df,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "ROI": st.column_config.TextColumn("ROI", width="small"),
-                        "Discard": st.column_config.TextColumn("Discard", width="small"),
-                        "Snow Present": st.column_config.TextColumn("Snow Present", width="small"),
-                        "Flag Count": st.column_config.NumberColumn("Flag Count", width="small"),
-                        "Flags": st.column_config.TextColumn("Flags", width="large")
+                        "Filename": st.column_config.TextColumn("Filename", width="large"),
+                        "Status": st.column_config.TextColumn("Status", width="medium")
                     }
                 )
-                
-                # Add summary statistics
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    total_rois = len(summary_data)
-                    st.metric("Total ROIs", total_rois)
-                
-                with col2:
-                    discarded_rois = sum(1 for item in summary_data if item["Discard"] == "Yes")
-                    st.metric("Discarded ROIs", discarded_rois, 
-                             delta=f"{100 * discarded_rois / total_rois:.1f}%" if total_rois > 0 else "0%")
-                
-                with col3:
-                    flagged_rois = sum(1 for item in summary_data if item["Flag Count"] > 0)
-                    st.metric("ROIs with Flags", flagged_rois,
-                             delta=f"{100 * flagged_rois / total_rois:.1f}%" if total_rois > 0 else "0%")
-            else:
-                st.info("No annotation data available for summary")
-        
-        # Convert the UI state to a dataframe for processing
-        edited_data = []
-        for idx, roi_name in enumerate(all_roi_names):
-            if roi_name in updated_flag_selections:
-                selections = updated_flag_selections[roi_name]
-                
-                # Each ROI now maintains its own settings independently
-                # Just use the current selections directly
-                roi_flags = selections["flags"]
-                roi_discard = selections["discard"]
-                roi_snow = selections["snow_presence"]
-                
-                # Build the ROI data with all settings
-                edited_data.append({
-                    "roi_name": roi_name,
-                    "discard": roi_discard,
-                    "snow_presence": roi_snow,
-                    "flags": roi_flags
-                })
-            else:
-                # Fallback to original data if not updated
-                edited_data.append(annotation_data[idx])
-        
-        # Convert to DataFrame for further processing
-        edited_annotations = pd.DataFrame(edited_data)
 
-        # Check if annotations have changed - using normalized comparison
-        if image_key in st.session_state.image_annotations:
-            old_annotations = st.session_state.image_annotations[image_key]
-            new_annotations = edited_annotations.to_dict('records')
-            
-            # Normalize and compare annotations to avoid false change detection
-            def normalize_annotations(annotations):
-                if not annotations:
-                    return []
-                result = []
-                for item in sorted(annotations, key=lambda x: x.get('roi_name', '')):
-                    normalized = item.copy()
-                    # Ensure flags is always a sorted list of strings 
-                    if 'flags' in normalized:
-                        normalized['flags'] = sorted([str(flag) for flag in (normalized['flags'] or [])])
-                    # Remove any temporary keys used for UI purposes
-                    if '_flag_selector' in normalized:
-                        del normalized['_flag_selector']
-                    result.append(normalized)
-                return result
-            
-            old_normalized = normalize_annotations(old_annotations)
-            new_normalized = normalize_annotations(new_annotations)
-            
-            # Deep comparison of annotations
-            def deep_compare_annotations(old, new):
-                if len(old) != len(new):
-                    print(f"Different number of annotations: {len(old)} vs {len(new)}")
-                    return True
-                
-                # Compare each annotation by ROI
-                for old_item, new_item in zip(old, new):
-                    # Check all basic fields except flags
-                    for key in set(old_item.keys()) & set(new_item.keys()):
-                        if key != 'flags':
-                            if old_item.get(key) != new_item.get(key):
-                                print(f"Change detected in {key}: {old_item.get(key)} -> {new_item.get(key)}")
-                                return True
-                    
-                    # Check flags separately (as sets to ignore order)
-                    old_flags = set(old_item.get('flags', []))
-                    new_flags = set(new_item.get('flags', []))
-                    if old_flags != new_flags:
-                        print(f"Flags changed for {old_item.get('roi_name')}: {old_flags} -> {new_flags}")
-                        return True
-                
-                return False  # No changes detected
-            
-            # Perform the deep comparison
-            annotations_changed = deep_compare_annotations(old_normalized, new_normalized)
-            
-            if annotations_changed:
-                print(f"Detected changes in annotations for {os.path.basename(image_key)}")
-            else:
-                print(f"No changes detected in annotations for {os.path.basename(image_key)}")
-        else:
-            annotations_changed = True
-            print(f"New annotations created for {os.path.basename(image_key)}")
-            
-        # Process selections and ensure consistency
-        new_records = edited_annotations.to_dict('records')
-        for record in new_records:
-            # Ensure flags is always a list
-            if 'flags' not in record or record['flags'] is None:
-                record['flags'] = []
-                
-            # Make sure all flag values are strings (not dictionaries or other types)
-            record['flags'] = [str(flag) for flag in record['flags']]
-        
-        # Save the edited annotations back to session state
-        st.session_state.image_annotations[image_key] = new_records
-
-        # Display current annotation status
-        st.caption(f"Annotating: {os.path.basename(current_filepath)}")
-        
-        # Handle changes to annotations
-        if annotations_changed:
-            # Check if the annotations were just loaded (in which case, don't auto-save)
-            just_loaded = st.session_state.get('annotations_just_loaded', False)
-            
-            if just_loaded:
-                # Clear the just_loaded flag
-                st.session_state.annotations_just_loaded = False
-                print(f"Annotations were just loaded - not marking as changed yet")
-                
-                # Update the UI but don't trigger auto-save
-                if 'unsaved_changes' in st.session_state:
-                    st.session_state.unsaved_changes = False
-            else:
-                # This is a real user change, not just a load operation
-                # Set a flag to indicate annotations have changed
-                if 'unsaved_changes' not in st.session_state:
-                    st.session_state.unsaved_changes = True
-                    
-                # Record interaction for annotation timer
-                from phenotag.ui.components.annotation_timer import annotation_timer
-                annotation_timer.record_interaction()
-                
-                # Get auto-save settings
-                auto_save_enabled = st.session_state.get('auto_save_enabled', True)
-                immediate_save_enabled = st.session_state.get('immediate_save_enabled', True)
-                
-                # If immediate saving is enabled, save annotations right away
-                if auto_save_enabled and immediate_save_enabled:
-                    # Save annotations immediately without waiting for timeout
-                    save_all_annotations()
-                    st.session_state.unsaved_changes = False
-                    st.session_state.last_save_time = datetime.datetime.now()
-                    if 'auto_save_time' in st.session_state:
-                        # Reset the auto-save timer
-                        st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
-        
-        # Add status indicator and save timestamp
-        if 'last_save_time' not in st.session_state:
-            st.session_state.last_save_time = None
-
-    with save_col:
-        # Show save status
-        if st.session_state.get('unsaved_changes', False):
-            st.warning("You have unsaved changes", icon="⚠️")
-        elif st.session_state.last_save_time:
-            last_save = st.session_state.last_save_time.strftime("%H:%M:%S") if st.session_state.last_save_time else "Never"
-            st.success(f"All changes saved at {last_save}", icon="✅")
-        
-        # Initialize auto-save settings if not already set
-        # Default to disabled auto-save per user request
-        if 'auto_save_enabled' not in st.session_state:
-            st.session_state.auto_save_enabled = False
-        if 'immediate_save_enabled' not in st.session_state:
-            st.session_state.immediate_save_enabled = False
-        
-        # Display a warning about auto-save being disabled
-        if st.session_state.get('unsaved_changes', False):
-            st.warning("⚠️ You have unsaved changes. Use the 'Save Now' button to save your work.")
-            
-        # Show information about when to save
-        st.info("Remember to save your annotations before switching to another day or closing the application.", icon="ℹ️")
-            
-        # Create a prominent save button
-        if st.button("💾 Save Annotations", 
-                    type="primary", 
-                    use_container_width=True,
-                    help="Save all annotations to disk"):
-            with st.spinner("Saving annotations..."):
-                save_all_annotations(force_save=True)
-                st.session_state.unsaved_changes = False
-                st.session_state.last_save_time = datetime.datetime.now()
-                st.rerun()
-        
-        # Add option to re-enable auto-save if user wants it
-        with st.expander("Auto-save settings (advanced)"):
-            # Create checkbox widgets for auto-save settings
-            auto_save = st.checkbox("Enable auto-save", 
-                            value=st.session_state.auto_save_enabled,
-                            help="Automatically save annotations every 60 seconds",
-                            key=f"auto_save_enabled_{image_key}")
-            
-            immediate_save = st.checkbox("Save immediately on changes", 
-                                    value=st.session_state.immediate_save_enabled,
-                                    help="Automatically save annotations immediately when changes are made",
-                                    key=f"immediate_save_enabled_{image_key}")
-            
-            # Update session state from widget values
-            st.session_state.auto_save_enabled = auto_save
-            st.session_state.immediate_save_enabled = immediate_save
-            
-            # Handle timed auto-save if enabled (and immediate save is not active or didn't catch all changes)
-            if auto_save and st.session_state.get('unsaved_changes', False):
-                # Add a placeholder for auto-save countdown
-                if 'auto_save_time' not in st.session_state:
-                    st.session_state.auto_save_time = datetime.datetime.now() + datetime.timedelta(seconds=60)
-                
-                # Calculate time until auto-save
-                now = datetime.datetime.now()
-                if now >= st.session_state.auto_save_time:
-                    # Time to auto-save
-                    save_all_annotations()
-                    st.session_state.unsaved_changes = False
-                    st.session_state.last_save_time = now
-                    st.session_state.auto_save_time = now + datetime.timedelta(seconds=60)
-                    st.rerun()
-                else:
-                    # Show countdown
-                    seconds_left = int((st.session_state.auto_save_time - now).total_seconds())
-                    if seconds_left > 0:
-                        st.caption(f"Auto-save in {seconds_left} seconds...")
+def _handle_popup_save(image_key):
+    """
+    Handle saving annotations when the save button in the popup is clicked.
     
-        # Show elapsed annotation time
+    Args:
+        image_key (str): Path to the image
+    """
+    # Save annotations
+    save_all_annotations(force_save=True)
     
-        if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
-            from phenotag.ui.components.annotation_timer import annotation_timer
-            current_day = st.session_state.annotation_timer_current_day
-            formatted_time = annotation_timer.get_formatted_time(current_day)
-            
-            st.metric(
-                "Annotation Time",
-                formatted_time,
-                help="Total time spent annotating this day (HH:MM:SS)",
-                delta=None,
-                delta_color="off"
-            )
-    
-        # Show elapsed annotation time here (moved up from below)
-        if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
-            from phenotag.ui.components.annotation_timer import annotation_timer
-            current_day = st.session_state.annotation_timer_current_day
-            formatted_time = annotation_timer.get_formatted_time(current_day)
-            
-            st.metric(
-                "Annotation Time",
-                formatted_time,
-                help="Total time spent annotating this day (HH:MM:SS)",
-                delta=None,
-                delta_color="off"
-            )
-        
-        # Create a dropdown menu for reset options
-        reset_option = st.selectbox(
-            "Reset Options",
-            ["Reset Current", "Reset All"],
-            label_visibility="collapsed"
-        )
-        
-        if st.button("Apply Reset", use_container_width=True):
-            if reset_option == "Reset Current":
-                # Remove annotations for current image
-                if image_key in st.session_state.image_annotations:
-                    del st.session_state.image_annotations[image_key]
-                    st.session_state.unsaved_changes = True
-                st.rerun()
-            elif reset_option == "Reset All":
-                # Clear all annotations
-                st.session_state.image_annotations = {}
-                st.session_state.unsaved_changes = True
-                st.rerun()
+    # Clear the popup flag
+    st.session_state.show_annotation_popup = False
 
 
 def save_all_annotations(force_save=False):
@@ -806,14 +658,59 @@ def save_all_annotations(force_save=False):
                             total_annotation_time += current_session_time
                             print(f"Added current session time: {current_session_time:.2f} minutes. Total now: {total_annotation_time:.2f} minutes")
 
+                        # Get the total number of images for this day from the file system
+                        from phenotag.ui.components.image_display import get_filtered_file_paths
+                        selected_station = st.session_state.selected_station if 'selected_station' in st.session_state else None
+                        selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None
+                        selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
+                        
+                        all_files = get_filtered_file_paths(
+                            selected_station,
+                            selected_instrument,
+                            selected_year,
+                            doy
+                        )
+                        
+                        # Count how many images have annotations
+                        annotated_count = len(day_annotations)
+                        expected_count = len(all_files)
+                        
+                        # Determine the completion status of each annotated file
+                        file_status = {}
+                        for filename, annotations in day_annotations.items():
+                            # If any ROI is missing annotations, the file is incomplete
+                            all_rois_annotated = True
+                            for roi in annotations:
+                                # Check if this ROI has any annotations (flags, properties, or not_needed set)
+                                has_annotations = (
+                                    roi.get('discard', False) or
+                                    roi.get('snow_presence', False) or
+                                    len(roi.get('flags', [])) > 0 or
+                                    roi.get('not_needed', False)
+                                )
+                                if not has_annotations:
+                                    all_rois_annotated = False
+                                    break
+                            
+                            # Set status based on whether all ROIs are annotated
+                            file_status[filename] = "completed" if all_rois_annotated else "in_progress"
+                        
+                        # Calculate overall completion percentage
+                        completion_percentage = (annotated_count / expected_count * 100) if expected_count > 0 else 0
+                        
                         # Create basic annotations data structure
                         annotations_data = {
                             "created": existing_data.get("created", datetime.datetime.now().isoformat()),
+                            "last_modified": datetime.datetime.now().isoformat(),
                             "day_of_year": doy,
-                            "year": st.session_state.selected_year if 'selected_year' in st.session_state else None,  # Include the year in metadata
-                            "station": st.session_state.selected_station if 'selected_station' in st.session_state else None,
-                            "instrument": st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None,
+                            "year": selected_year,
+                            "station": selected_station,
+                            "instrument": selected_instrument,
                             "annotation_time_minutes": total_annotation_time,
+                            "expected_image_count": expected_count,
+                            "annotated_image_count": annotated_count,
+                            "completion_percentage": round(completion_percentage, 2),
+                            "file_status": file_status,
                             "annotations": day_annotations
                         }
                         
@@ -832,20 +729,23 @@ def save_all_annotations(force_save=False):
                         try:
                             if 'annotation_status_map' in st.session_state:
                                 # Extract month from day number
+                                selected_station = st.session_state.selected_station if 'selected_station' in st.session_state else 'unknown'
+                                selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else 'unknown'
                                 current_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
                                 date = datetime.datetime.strptime(f"{current_year}-{doy}", "%Y-%j") if current_year else datetime.datetime.now()
                                 month = date.month
                                 
+                                # Print info about annotation status
+                                print(f"Setting annotation status for day {doy} in month {month}, year {current_year}")
+                                
                                 # Create status key
-                                selected_station = st.session_state.selected_station if 'selected_station' in st.session_state else 'unknown'
-                                selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else 'unknown'
                                 status_key = f"{selected_station}_{selected_instrument}_{current_year}_{month}"
                                 
                                 # Update or create cache entry
                                 if status_key not in st.session_state.annotation_status_map:
                                     st.session_state.annotation_status_map[status_key] = {}
                                     
-                                # Check if all images in this day are annotated
+                                # Check if all images in this day are annotated AND all ROIs in each image
                                 all_annotated = True
                                 day_filepaths = []
                                 
@@ -865,13 +765,38 @@ def save_all_annotations(force_save=False):
                                     doy
                                 )
                                 
-                                # If all images have annotations, mark as completed, otherwise in_progress
+                                # FIRST check if all images exist in annotations
                                 if len(day_filepaths) < len(all_day_filepaths):
                                     print(f"Not all images annotated for day {doy}: {len(day_filepaths)}/{len(all_day_filepaths)}")
-                                    st.session_state.annotation_status_map[status_key][doy] = 'in_progress'
+                                    all_annotated = False
                                 else:
-                                    print(f"All images annotated for day {doy}")
+                                    print(f"All {len(all_day_filepaths)} images have annotation entries for day {doy}")
+                                    
+                                    # SECOND, verify that each image has complete annotations for all ROIs
+                                    # Check that each annotation has ROI entries
+                                    for img_path in day_filepaths:
+                                        if img_path in st.session_state.image_annotations:
+                                            img_annotations = st.session_state.image_annotations[img_path]
+                                            
+                                            # Check if instrument_rois exists and get expected ROI count
+                                            expected_roi_count = 1  # At minimum, should have ROI_00
+                                            if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
+                                                # Add 1 for each custom ROI plus the default ROI_00
+                                                expected_roi_count = len(st.session_state.instrument_rois) + 1
+                                            
+                                            # Check if all expected ROIs are annotated
+                                            if len(img_annotations) < expected_roi_count:
+                                                print(f"Image {os.path.basename(img_path)} missing some ROI annotations: has {len(img_annotations)}, expected {expected_roi_count}")
+                                                all_annotated = False
+                                                break
+                                
+                                # Only mark as completed if ALL images have ALL ROIs annotated
+                                if all_annotated:
+                                    print(f"All images fully annotated for day {doy} - marking as completed")
                                     st.session_state.annotation_status_map[status_key][doy] = 'completed'
+                                else:
+                                    print(f"Annotation incomplete for day {doy} - marking as in_progress")
+                                    st.session_state.annotation_status_map[status_key][doy] = 'in_progress'
                                 
                                 print(f"Updated annotation status cache for day {doy} to {st.session_state.annotation_status_map[status_key][doy]}")
                                 
@@ -890,6 +815,8 @@ def save_all_annotations(force_save=False):
                                         current_base_dir = os.sep.join(base_path_parts)
                                         
                                     from phenotag.ui.components.annotation_status_manager import save_status_to_l1_parent
+                                    # Use the current status (completed or in_progress)
+                                    current_status = st.session_state.annotation_status_map[status_key][doy]
                                     save_status_to_l1_parent(
                                         current_base_dir,
                                         selected_station,
@@ -897,7 +824,7 @@ def save_all_annotations(force_save=False):
                                         current_year,
                                         month,
                                         doy,
-                                        'completed'
+                                        current_status
                                     )
                                     print(f"Saved annotation status to L1 parent folder for day {doy}")
                                 except Exception as status_error:
@@ -939,7 +866,7 @@ def save_all_annotations(force_save=False):
             annotation_timer.start_timer(st.session_state.annotation_timer_current_day)
 
         if saved_count > 0:
-            st.toast(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!", icon="✅")
+            st.toast(f"Saved annotations for {saved_count} images across {len(annotations_by_day)} days!")
         else:
             st.toast("No valid images to save annotations for.")
     except Exception as e:
@@ -1036,6 +963,16 @@ def load_day_annotations(selected_day, daily_filepaths):
                                             if 'flags' not in processed_anno or processed_anno['flags'] is None:
                                                 processed_anno['flags'] = []
                                             
+                                            # Handle the not_needed field
+                                            if 'not_needed' not in processed_anno:
+                                                # Check if the "not_needed" flag is in the flags list
+                                                if 'flags' in processed_anno and "not_needed" in processed_anno['flags']:
+                                                    # Remove it from flags and set the dedicated field
+                                                    processed_anno['flags'].remove("not_needed")
+                                                    processed_anno['not_needed'] = True
+                                                else:
+                                                    processed_anno['not_needed'] = False
+                                            
                                             # Make sure flags is a list of strings
                                             processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
                                             
@@ -1044,26 +981,6 @@ def load_day_annotations(selected_day, daily_filepaths):
                                         
                                         # After processing, store the annotations
                                         st.session_state.image_annotations[filepath] = processed_annotations
-                                        
-                                        # Now, directly set the widget states
-                                        for anno in processed_annotations:
-                                            roi_name = anno.get('roi_name')
-                                            roi_key = f"{roi_name}_{filepath}"
-                                            
-                                            # IMPORTANT: We don't set session state directly for widgets anymore
-                                            # as it causes a Streamlit warning. Instead, we'll use the default values
-                                            # when creating the widgets. The annotation data is already stored in
-                                            # st.session_state.image_annotations, which is used to set the defaults
-                                            # when creating the widgets.
-                                            pass
-                                            
-                                            # Old approach that caused warnings:
-                                            # flags_key = f"flags_{roi_key}"
-                                            # st.session_state[flags_key] = anno.get('flags', [])
-                                            # discard_key = f"discard_{roi_key}"
-                                            # st.session_state[discard_key] = anno.get('discard', False)
-                                            # snow_key = f"snow_{roi_key}"
-                                            # st.session_state[snow_key] = anno.get('snow_presence', False)
                                         
                                         loaded_count += 1
                                         print(f"Loaded annotations for image: {img_name} - {len(processed_annotations)} ROIs")
@@ -1088,6 +1005,16 @@ def load_day_annotations(selected_day, daily_filepaths):
                                             if 'flags' not in processed_anno or processed_anno['flags'] is None:
                                                 processed_anno['flags'] = []
                                                 
+                                            # Handle the not_needed field
+                                            if 'not_needed' not in processed_anno:
+                                                # Check if the "not_needed" flag is in the flags list
+                                                if 'flags' in processed_anno and "not_needed" in processed_anno['flags']:
+                                                    # Remove it from flags and set the dedicated field
+                                                    processed_anno['flags'].remove("not_needed")
+                                                    processed_anno['not_needed'] = True
+                                                else:
+                                                    processed_anno['not_needed'] = False
+                                                
                                             # Make sure flags is a list of strings
                                             processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
                                             
@@ -1100,18 +1027,6 @@ def load_day_annotations(selected_day, daily_filepaths):
                                             if os.path.basename(filepath) == img_name:
                                                 st.session_state.image_annotations[filepath] = converted_annotations
                                                 
-                                                # We don't need to set widget states directly anymore
-                                                # The annotation data is already stored in st.session_state.image_annotations
-                                                # and will be used as defaults when creating the widgets
-                                                
-                                                # Old approach that caused warnings:
-                                                # for anno in converted_annotations:
-                                                #     roi_name = anno.get('roi_name')
-                                                #     roi_key = f"{roi_name}_{filepath}"
-                                                #     st.session_state[f"flags_{roi_key}"] = anno.get('flags', [])
-                                                #     st.session_state[f"discard_{roi_key}"] = anno.get('discard', False)
-                                                #     st.session_state[f"snow_{roi_key}"] = anno.get('snow_presence', False)
-                                                
                                                 loaded_count += 1
                                                 print(f"Converted and loaded annotations for image: {img_name} - {len(converted_annotations)} ROIs")
                                                 break
@@ -1122,14 +1037,33 @@ def load_day_annotations(selected_day, daily_filepaths):
                         
                         # Set a flag to indicate annotations were loaded
                         st.session_state.annotations_just_loaded = True
-
-                    # Show notification that annotations were loaded
-                    st.success(f"Loaded annotations for day {selected_day}", icon="✅")
+                        
+                        # Analyze and display annotation completion status
+                        if 'expected_image_count' in annotation_data and 'annotated_image_count' in annotation_data:
+                            expected = annotation_data['expected_image_count']
+                            annotated = annotation_data['annotated_image_count']
+                            completion = annotation_data.get('completion_percentage', 0)
+                            
+                            # Show notification with completion status
+                            st.success(f"Loaded annotations for day {selected_day}: {annotated}/{expected} images ({completion}% complete)", icon="✅")
+                            
+                            # Store completion info in session state
+                            if 'annotation_completion' not in st.session_state:
+                                st.session_state.annotation_completion = {}
+                            st.session_state.annotation_completion[selected_day] = {
+                                'expected': expected,
+                                'annotated': annotated,
+                                'percentage': completion,
+                                'file_status': annotation_data.get('file_status', {})
+                            }
+                        else:
+                            # Just show basic notification for older annotation files
+                            st.success(f"Loaded annotations for day {selected_day}", icon="✅")
             else:
                 print(f"No annotations file found for day {selected_day} at {annotations_file}")
         except Exception as e:
             print(f"Error loading annotations for day change: {e}")
-            st.error(f"Error loading annotations: {e}", icon="❌")
+            st.error(f"Error loading annotations: {e}")
         finally:
             # Always clear the loading flag
             st.session_state.loading_annotations = False

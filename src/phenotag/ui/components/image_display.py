@@ -87,9 +87,8 @@ def display_image_list(daily_filepaths):
     # Create a list of radio options with formatted display labels
     radio_options = []
     for i, (filename, doy, date, time, annotated) in enumerate(zip(filenames, doys, dates, timestamps, annotation_status)):
-        # Create a readable label for each radio option - just date, time and annotation status
-        annotation_mark = "✓ " if annotated else ""
-        label = f"{annotation_mark}{date} - {time}"
+        # Create a readable label for each radio option - just date and time without annotation status
+        label = f"{date} - {time}"
         radio_options.append((label, i))  # Store tuple of (label, index)
     
     # Initialize session state for selected index if it doesn't exist
@@ -109,25 +108,34 @@ def display_image_list(daily_filepaths):
         else:
             default_value = radio_options[0][0] if radio_options else None
         
-        # Create the radio buttons
-        selected_option = st.radio(
+        # Use a persistent key based on the file_paths to maintain selection
+        radio_key = "image_radio_selector"
+        
+        # Instead of using the label (which changes when annotation status changes),
+        # we'll use the indices directly and format the labels separately
+        options_indices = list(range(len(radio_options)))
+        
+        # Get formatted labels for display
+        formatted_labels = [option[0] for option in radio_options]
+        
+        # For index selection, use the session state value or default to 0
+        index_to_use = default_index if default_index is not None and default_index < len(options_indices) else 0
+        
+        # Create the radio buttons with indices as values
+        selected_index = st.radio(
             "Select an image:",
-            [option[0] for option in radio_options],
-            index=0 if default_value is not None else None,
-            key="image_radio_selector",
+            options=options_indices,
+            format_func=lambda i: formatted_labels[i] if i < len(formatted_labels) else "",
+            index=index_to_use,
+            key=radio_key,
             label_visibility="collapsed"
         )
         
-        # Find the selected index
-        selected_index = None
-        for option in radio_options:
-            if option[0] == selected_option:
-                selected_index = option[1]
-                break
-        
         # Update session state with the selected index
-        if selected_index is not None and selected_index != st.session_state.selected_image_index:
+        if selected_index is not None:
+            # Always update session state to ensure it persists
             st.session_state.selected_image_index = selected_index
+            print(f"Updated selected_image_index to {selected_index}")
             
         # Create a selection event that mimics the dataframe selection event
         if selected_index is not None:
@@ -161,14 +169,22 @@ def display_selected_image(event, daily_filepaths):
     # First check if we have a radio button selection in session state
     if 'selected_image_index' in st.session_state and st.session_state.selected_image_index is not None:
         index = st.session_state.selected_image_index
+        print(f"Using index from session state: {index}")
     # Fall back to the event selection if provided (for backward compatibility)
     elif event and hasattr(event, 'selection') and hasattr(event.selection, 'rows') and event.selection.rows:
         try:
             # Convert to integer index (it might be a string from the dataframe)
             index = int(event.selection.rows[0])
+            print(f"Using index from event: {index}")
+            
+            # Also update the session state for persistence
+            st.session_state.selected_image_index = index
         except (ValueError, TypeError) as e:
+            print(f"Error processing selection from event: {e}")
             st.error(f"Error processing selection from event: {e}")
             index = None
+    else:
+        print("No selection found - neither in session state nor in event")
     
     # Process the selection if we have a valid index
     if index is not None:
@@ -298,6 +314,53 @@ def display_selected_image(event, daily_filepaths):
                     # Print debugging info
                     print(f"Selected image: {filepath}")
                     print(f"Image stored in session state as current_filepath")
+                    
+                    # Add annotation summary below the image in the main column
+                    st.markdown("---")
+                    st.markdown("### Annotation Summary")
+                    
+                    # Get annotation summary data
+                    from phenotag.ui.components.annotation import create_annotation_summary
+                    summary = create_annotation_summary(filepath)
+                    
+                    if summary and summary["summary_data"]:
+                        # Create and display the summary dataframe
+                        summary_df = pd.DataFrame(summary["summary_data"])
+                        
+                        # Style the dataframe
+                        st.dataframe(
+                            summary_df,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Filename": st.column_config.TextColumn("Filename", width="large"),
+                                "ROI": st.column_config.TextColumn("ROI", width="small"),
+                                "Discard": st.column_config.TextColumn("Discard", width="small"),
+                                "Snow Present": st.column_config.TextColumn("Snow Present", width="small"),
+                                "No annotation needed": st.column_config.TextColumn("No annotation needed", width="medium"),
+                                "Flag Count": st.column_config.NumberColumn("Flag Count", width="small"),
+                                "Flags": st.column_config.TextColumn("Flags", width="large")
+                            }
+                        )
+                        
+                        # Display metrics in columns
+                        metrics = summary["metrics"]
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Total ROIs", metrics["total_rois"])
+                        
+                        with col2:
+                            st.metric("Discarded ROIs", metrics["discarded_rois"], 
+                                    delta=metrics["discarded_pct"])
+                        
+                        with col3:
+                            st.metric("ROIs with Flags", metrics["flagged_rois"],
+                                    delta=metrics["flagged_pct"])
+                    else:
+                        if summary is None:
+                            st.info("No annotation data available for this image.")
+                        else:
+                            st.info("No annotation data to display.")
                 else:
                     st.error(f"Failed to process image: {filepath}")
             else:
@@ -466,6 +529,10 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
 
                     # Update session state when toggle changes
                     if show_rois != st.session_state.show_roi_overlays:
+                        # Flag to indicate this is just a UI toggle, not an annotation change
+                        st.session_state.roi_toggle_changed = True
+                        
+                        # Update the toggle state
                         st.session_state.show_roi_overlays = show_rois
 
                         # If ROIs are enabled but haven't been loaded yet, load them automatically
@@ -523,36 +590,33 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                     else:
                         st.write(f"{len(daily_filepaths)} images available for day {selected_day}")
                     
-                    # Add navigation buttons below the radio buttons for Previous/Next
-                    if len(daily_filepaths) > 1:
-                        col1, col2 = st.columns(2)
-                        
-                        # Current index
-                        current_index = st.session_state.get('selected_image_index', 0)
-                        
-                        with col1:
-                            if st.button("⬅️ Previous", 
-                                        disabled=current_index <= 0,
-                                        use_container_width=True):
-                                # Move to previous image
-                                st.session_state.selected_image_index = max(0, current_index - 1)
-                                st.rerun()
-                                
-                        with col2:
-                            if st.button("Next ➡️", 
-                                        disabled=current_index >= len(daily_filepaths) - 1,
-                                        use_container_width=True):
-                                # Move to next image
-                                st.session_state.selected_image_index = min(len(daily_filepaths) - 1, current_index + 1)
-                                st.rerun()
+                    # No navigation buttons - users will select directly from radio buttons
+                    
+                    # Add annotation panel at the bottom of the image selection column
+                    if 'current_filepath' in st.session_state and st.session_state.current_filepath:
+                        st.markdown("---")
+                        from phenotag.ui.components.annotation import display_annotation_panel
+                        display_annotation_panel(st.session_state.current_filepath)
 
                 # Display the selected image in the main column
                 with main_col:
+                    # Get the selected index directly from session state
+                    selected_index = st.session_state.get('selected_image_index')
+                    
+                    # Directly set the current filepath from the index if possible
+                    if selected_index is not None and 0 <= selected_index < len(daily_filepaths):
+                        selected_filepath = daily_filepaths[selected_index]
+                        # Set the current filepath in session state BEFORE displaying
+                        st.session_state.current_filepath = selected_filepath
+                        print(f"Set current_filepath directly from selected_index: {selected_filepath}")
+                    
+                    # Now display the image (still using the event for compatibility)
                     displayed_filepath = display_selected_image(event, daily_filepaths)
                     
-                    # Update current filepath in session state
-                    if displayed_filepath:
+                    # As a fallback, update current filepath in session state from the displayed result
+                    if displayed_filepath and displayed_filepath != st.session_state.get('current_filepath'):
                         st.session_state.current_filepath = displayed_filepath
+                        print(f"Updated current_filepath from display result: {displayed_filepath}")
             else:
                 # No files found for the selected days
                 if selected_days:

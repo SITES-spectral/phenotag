@@ -48,6 +48,7 @@ created: "2025-05-14T12:34:56.789012"
 day_of_year: "001"
 station: "abisko"
 instrument: "PC01"
+year: "2025"
 annotation_time_minutes: 45.8
 annotations:
   'file_name1.jpg':
@@ -72,23 +73,73 @@ Each image entry contains:
 - The flags property is a list of flag names that apply to this ROI
 - The first ROI entry (ROI_00) represents the entire image
 
-## Auto-Save and Persistence
+Images can be marked as "not needing annotation" with a special flag:
 
-PhenoTag features an enhanced annotation saving system that includes:
+```yaml
+annotations:
+  'file_name1.jpg':
+    - roi_name: "ROI_00"
+      discard: false
+      snow_presence: false
+      flags: ["not_needed"]  # Special flag indicating no annotation needed
+    # Additional ROIs will also have the not_needed flag
+```
 
-1. **Auto-Save**:
-   - Enabled by default, saves annotations automatically every 60 seconds when changes are detected
-   - User can toggle auto-save on/off in the annotation panel
-   - Visual countdown shows when the next auto-save will occur
-   - Status indicators show whether there are unsaved changes
+## Annotation Tracking and Persistence
 
-2. **Immediate Save Option**:
-   - "Save immediately on changes" option for real-time persistence
-   - When enabled, annotations are saved instantly when any changes are made
-   - Complements the timed auto-save feature for maximum data protection
-   - Can be toggled independently from the timed auto-save
+PhenoTag features an enhanced annotation tracking and saving system that includes:
 
-3. **Force Save on Context Changes**:
+> **⚠️ VERY IMPORTANT: UI-ONLY STATE CHANGES AND SAVING**
+>
+> Some UI actions, like toggling ROI overlays, are purely visual and should not trigger annotation saves.
+> PhenoTag implements a pattern to prevent unwanted saves:
+>
+> 1. Set a flag in session state when making UI-only changes:
+>    ```python
+>    # Flag to indicate this is just a UI toggle, not an annotation change
+>    st.session_state.roi_toggle_changed = True
+>    ```
+>
+> 2. Check this flag before saving:
+>    ```python
+>    # Skip saving if just toggling UI elements
+>    if not st.session_state.get('roi_toggle_changed', False):
+>        save_all_annotations()
+>    ```
+>
+> 3. Reset the flag after checking:
+>    ```python
+>    # Reset the toggle flag for the next run
+>    if 'roi_toggle_changed' in st.session_state:
+>        del st.session_state['roi_toggle_changed']
+>    ```
+>
+> This pattern MUST be followed for any UI-only state changes to prevent:
+> - Accidental saving of empty/incomplete annotations
+> - Overwriting existing annotations with default values
+> - Data loss or corruption during UI interaction
+>
+> **Always use this pattern when adding new UI toggles or controls that should not affect annotation data.**
+
+1. **Progress Tracking**:
+   - Tracks the expected number of images for each day
+   - Counts how many images have annotations
+   - Calculates and displays completion percentage
+   - Shows a progress bar to visualize completion status
+   - Displays metrics for total, completed, and in-progress images
+
+2. **Individual File Status**:
+   - Tracks the annotation status of each image file
+   - Marks files as "completed" when all ROIs are properly annotated
+   - Marks files as "in_progress" when some ROIs need annotation
+   - Displays status in a table view for easy monitoring
+
+3. **Auto-Save**:
+   - Saves annotations automatically when closing the annotation panel
+   - Updates completion statistics during each save operation
+   - Preserves annotation time tracking for reporting
+
+4. **Force Save on Context Changes**:
    - Annotations are automatically saved when:
      - Changing days in the calendar
      - Changing instruments
@@ -96,18 +147,13 @@ PhenoTag features an enhanced annotation saving system that includes:
      - Changing years or months
      - Scanning for new images
      - Clearing day selection
-   - These saves occur regardless of auto-save settings to ensure data safety
+   - These saves occur to ensure data safety and update completion status
 
-4. **Manual Save**:
-   - A "Save Now" button allows immediate saving at any time
-   - Shows as "Save Now" when there are unsaved changes
-   - Shows as "Save All" when everything is saved
-   - Displays timestamp of the last save operation
-
-5. **Contextual Status Indicators**:
-   - Warning icon when unsaved changes exist
-   - Success icon with timestamp when all changes are saved
-   - Countdown timer showing seconds until next auto-save
+5. **Progress Visualization**:
+   - Shows progress bar for day completion
+   - Displays metrics for expected vs. annotated image counts
+   - Updates the annotation completion percentage in real-time
+   - Provides a detailed view of individual file status
 
 ## Annotation Timer
 
@@ -240,37 +286,49 @@ When no annotations exist for an image, the following default values are used:
 
 Additional ROIs (if defined in stations.yaml) will be added to this list with the same default values.
 
-## ROI Annotation Interface
+## Annotation Interface
 
-PhenoTag features a tabbed interface for ROI annotations:
+PhenoTag features a streamlined popup-based interface for ROI annotations:
 
-1. **ROI Tabs**:
+1. **Annotation Panel**:
+   - Located in the image selection sidebar
+   - Shows annotation status for the current image
+   - Provides a "No annotation needed" button for images that don't require annotation
+   - Features a popover that expands to show the full annotation interface
+
+2. **ROI Tabs**:
    - Each ROI has its own dedicated tab for focused annotation
    - Tabs are automatically generated based on available ROIs
    - Easy navigation between different ROIs
    - Clear context of which ROI is being annotated
 
-2. **Quality Flags Selection**:
+3. **Quality Flags Selection**:
    - Each ROI tab contains a multiselect widget for flag selection
    - Flags are organized by category for easier browsing
    - Flags display their category for better context
    - Selected flags are displayed with their categories
-   
-3. **Apply from ROI_00 Feature**:
-   - The ROI_00 tab (full image) has an "Apply ROI_00 Settings to All ROIs" button
-   - When clicked, all settings from ROI_00 (discard, snow presence, and flags) are applied to all other ROIs
-   - Detailed visual indicators show which ROIs are affected and what settings will be applied
-   - Useful for setting common settings across multiple ROIs quickly and consistently
-   - Changes take effect immediately and are saved automatically
-   - Each affected ROI shows a clear indicator when using settings from ROI_00
-   - Comprehensive error handling ensures reliable application of settings
 
-4. **Summary Tab**:
-   - Final tab provides a complete overview of all ROIs
-   - Table view shows discard status, snow presence, and applied flags
-   - Shows which ROIs inherit flags from ROI_00
-   - Includes metrics for total ROIs, discarded ROIs, and flagged ROIs
-   - Features a flag distribution chart showing most common flags
+4. **Copy ROI_00 Settings**:
+   - "Copy ROI_00 Settings to All ROIs" button applies settings from ROI_00 to all other ROIs
+   - Copies discard status, snow presence, and quality flags
+   - Useful for applying common settings across all regions
+   - Individual ROIs can still be customized after copying
+
+5. **Reset Annotations**:
+   - "Reset All Annotations" button allows clearing all annotations for the current day
+   - Useful when starting over or when annotations need to be recreated
+   - Provides immediate feedback when annotations are reset
+
+5. **Save & Close**:
+   - Primary button at the bottom of the annotation panel
+   - Saves all annotations and closes the panel
+   - Automatically updates the annotation summary
+
+6. **Annotation Summary**:
+   - Displayed below the main image
+   - Shows a comprehensive table of all ROIs for the current image
+   - Includes filename, ROI name, discard status, snow presence, and flags
+   - Features metrics for total ROIs, discarded ROIs, and flagged ROIs with percentages
 
 ## Example Usage
 

@@ -37,29 +37,45 @@ Example:
 ### Daily Annotation File Schema
 
 ```yaml
-# Annotation file for a specific day
-created: "2025-05-14T12:34:56.789012"  # Creation timestamp (ISO format)
-day_of_year: "001"                     # Day number (padded with zeros)
-station: "abisko"                      # Station name (normalized)
-instrument: "ANS_FOR_BL01_PHE01"       # Instrument ID
-annotation_time_minutes: 45.8          # Time spent annotating
+# Metadata
+created: "2025-05-14T12:34:56.789012"     # Timestamp when the annotation file was first created (ISO format)
+last_modified: "2025-05-14T13:45:12.345678" # Timestamp of the last modification
+day_of_year: "001"                        # Day of year (DOY) as a string with leading zeros
+year: "2023"                              # Year as a string
+station: "abisko"                         # Station name
+instrument: "PC01"                        # Instrument identifier
+annotation_time_minutes: 45.8             # Accumulated time spent on annotations for this day
 
-# Each image is stored as a key with its annotations
+# Tracking data
+expected_image_count: 12                  # Total number of images for this day
+annotated_image_count: 8                  # Number of images that have annotations
+completion_percentage: 66.67              # Percentage of images annotated (rounded to 2 decimal places)
+
+# Individual file status
+file_status:
+  'image1.jpg': "completed"               # Each image has a status: 'completed' or 'in_progress'
+  'image2.jpg': "in_progress"
+  'image3.jpg': "completed"
+  # ... more files
+
+# Annotations
 annotations:
-  '/path/to/file1.jpg':                # Full path to image file
-    quality:                           # File-level quality data
-      discard_file: false              # Whether to discard the entire file
-      snow_presence: false             # Snow presence indicator
-    rois:                              # Region of Interest annotations
-      ROI_00:                          # ROI_00 is the full image
-        discard_roi: false             # Whether to discard this ROI
-        snow_presence: false           # Snow presence in this ROI
-        annotated_flags: []            # Quality flags for this ROI
-      ROI_01:                          # Custom ROI
-        discard_roi: false
-        snow_presence: true
-        annotated_flags: ["sunny", "snow_covered"]
-      # Additional ROIs as defined in stations.yaml
+  'image1.jpg':                           # Key is the image filename
+    - roi_name: "ROI_00"                  # Default ROI (full image)
+      discard: false                      # Whether to discard this ROI
+      snow_presence: false                # Whether snow is present in this ROI
+      flags: []                           # Quality flags (empty list means no flags)
+    
+    - roi_name: "ROI_01"                  # Custom ROI
+      discard: false
+      snow_presence: true
+      flags: ["sunny", "clouds"]          # Multiple flags can be applied
+    
+    # More ROIs for this image...
+  
+  'image2.jpg':
+    # Similar structure for other images
+    # ...
 ```
 
 ### Annotation Status File Schema
@@ -86,6 +102,54 @@ annotations:
     # Similar structure for other years
 ```
 
+## File Status Values
+
+Each image in the `file_status` section can have one of these values:
+
+- `completed`: All ROIs for the image have been properly annotated
+- `in_progress`: Some ROIs for the image still need annotation
+
+## Determining Completion Status
+
+An image is considered fully annotated if:
+
+1. It has annotations for all expected ROIs (ROI_00 plus any custom ROIs)
+2. Each ROI has at least one of the following set:
+   - `discard` is set to `true`
+   - `snow_presence` is set to `true`
+   - There is at least one quality flag in the `flags` list
+   - The special flag `not_needed` is present in the `flags` list
+
+Day completion percentage is calculated as:
+```
+(annotated_image_count / expected_image_count) * 100
+```
+
+## Important Implementation Notes
+
+### "No Annotation Needed" Field
+
+The `not_needed` field is implemented as a separate boolean property:
+
+```yaml
+annotations:
+  'image1.jpg':
+    - roi_name: "ROI_00"
+      discard: false
+      snow_presence: false
+      flags: []           # Empty list - no actual quality flags
+      not_needed: true    # Separate field indicating no annotation needed
+```
+
+> **⚠️ IMPORTANT**: This is implemented as a dedicated boolean field rather than a flag in the flags list.
+> This design:
+> 1. Keeps the flags list exclusively for actual quality indicators
+> 2. Makes flag counting more accurate (flags.length only counts actual quality flags)
+> 3. Provides clearer separation of concerns in the data model
+> 4. Supports backward compatibility with older annotation files
+>
+> When loading older files that used "not_needed" as a flag, it's automatically migrated to the new field structure.
+
 ## File Management
 
 ### Creating and Saving Annotations
@@ -96,11 +160,9 @@ Annotations are created and saved through these primary functions:
    - Main function that orchestrates saving annotations
    - Supports force saving and auto-saving functionality
    - Creates any necessary directories
+   - Updates completion statistics and file status
 
-2. `save_annotations()` in `src/phenotag/io_tools/__init__.py`
-   - Lower-level function that writes the annotation data to YAML files
-
-3. `save_status_to_l1_parent()` in `src/phenotag/ui/components/annotation_status_manager.py`
+2. `save_status_to_l1_parent()` in `src/phenotag/ui/components/annotation_status_manager.py`
    - Updates the centralized status file when annotation status changes
 
 ### Loading Annotations
@@ -110,44 +172,16 @@ Annotations are loaded through these functions:
 1. `load_day_annotations()` in `src/phenotag/ui/components/annotation.py`
    - Handles loading annotations for a specific day
    - Converts them to the internal format used by the UI
+   - Displays completion statistics when loading annotations
 
-2. `load_annotations()` in `src/phenotag/io_tools/load_annotations.py`
-   - Low-level function to read annotation files from disk
+2. `display_annotation_completion_status()` in `src/phenotag/ui/components/annotation.py`
+   - Shows progress bar and metrics for annotation completion
+   - Displays individual file status in a table
 
-3. `check_day_annotation_status()` in `src/phenotag/ui/components/annotation_status.py`
-   - Checks the status of annotations for a given day
+## Legacy Format Support
 
-## Annotation Process
+PhenoTag supports loading older annotation files that may not have all the fields described above. When such files are loaded:
 
-1. When a user selects a day in the calendar, the system attempts to load existing annotations for that day.
-
-2. If annotations don't exist, default values are created for each image using `get_default_quality_data()` and `get_default_roi_data()`.
-
-3. As the user makes annotations in the UI, the changes are stored in the Streamlit session state.
-
-4. Annotations are saved:
-   - Automatically every 60 seconds (configurable)
-   - When explicitly requested by the user
-   - When switching to a different day, instrument, or station
-   - When exiting the application
-
-5. Annotation status is updated in the status file to track progress.
-
-## Validation
-
-The system performs several validations:
-
-1. Ensures all required fields are present
-2. Converts annotations from older formats to the current format if necessary
-3. Validates field types (e.g., ensures flags are stored as lists)
-4. Handles error cases gracefully with appropriate logging
-5. Checks for path validity before saving
-
-## Important Notes
-
-- All annotations are station-specific and instrument-specific
-- ROIs are defined in the `stations.yaml` configuration file
-- Quality flags are defined in the `flags.yaml` configuration file
-- Station names are normalized for filesystem operations
-- The system tracks time spent on annotations for each day
-- Annotation data can be exported and analyzed later
+1. Basic fields like `annotations` will be processed
+2. Missing fields like `expected_image_count` will be calculated when the file is saved
+3. The next save operation will update the file to the current schema

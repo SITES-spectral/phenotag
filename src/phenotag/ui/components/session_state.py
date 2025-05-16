@@ -38,10 +38,16 @@ def initialize_session_state(session_config=None):
         st.session_state.image_data = {}
     if 'current_filepath' not in st.session_state:
         st.session_state.current_filepath = None
+    if 'selected_image_index' not in st.session_state:
+        st.session_state.selected_image_index = 0  # Initialize with default of first image
     
     # Initialize ROI-related state
     if 'show_roi_overlays' not in st.session_state:
-        st.session_state.show_roi_overlays = True
+        st.session_state.show_roi_overlays = False
+    
+    # Initialize ROI toggle tracking flag
+    if 'roi_toggle_changed' not in st.session_state:
+        st.session_state.roi_toggle_changed = False
 
 
 def save_session_config():

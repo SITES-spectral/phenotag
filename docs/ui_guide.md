@@ -26,12 +26,18 @@ The sidebar contains the following elements:
 
 ### Main Content Area
 
-The main content area shows:
+The main content area is organized into a two-column layout:
 
-- **Station and Instrument Headers** - Clearly shows which station and instrument are selected
-- **Year and Day Selection** - Dropdowns for selecting the year and day to view
-- **Image Display** - Shows the selected image with full detail
-- **Annotation Editor** - Data editor for marking quality issues and ROI properties
+- **Left Column** (Image Selection):
+  - Image selection radio buttons
+  - ROI overlay toggle
+  - ROI legend (when overlays are enabled)
+  - Annotation panel with "No annotation needed" button and popup interface
+
+- **Right Column** (Image Display):
+  - Selected image with full detail and optional ROI overlays
+  - Annotation summary table
+  - Annotation metrics
 
 ## Core Workflows
 
@@ -50,13 +56,18 @@ The main content area shows:
 
 ### 3. Image Annotation
 
-1. View images in the left column
-2. Use the selectbox to choose different images
-3. Annotate properties in the data editor in the right column:
-   - Mark files for discarding
-   - Indicate snow presence
-   - Label ROI-specific properties
-4. Click "💾 Save Annotations" to save your work
+1. Select an image using the radio buttons in the left column
+2. View the image in the right column with optional ROI overlays
+3. For images that don't need annotation, click the "No annotation needed" button
+4. For images that require annotation:
+   - Click on the "Annotation Panel" popover in the left sidebar
+   - Use the tabbed interface to annotate each ROI:
+     - Mark ROIs for discarding (checkbox)
+     - Indicate snow presence (checkbox)
+     - Select quality flags (multiselect)
+   - Click "💾 Save & Close" to save your annotations and close the panel
+5. View the annotation summary below the image in the right column
+6. To reset annotations for the current day, use the "🔄 Reset All Annotations" button in the annotation panel
 
 ### 4. Session Management
 
@@ -79,7 +90,9 @@ The application uses several types of status indicators:
 - **Status Containers** - Show multi-step processes like scanning
 - **Progress Bars** - Indicate progress of operations
 - **Success/Error Messages** - Provide feedback on operation results
-- **Metrics** - Display summary statistics about found data
+- **Metrics** - Display summary statistics in the annotation summary
+- **Annotation Status** - Shows whether an image is annotated with a success icon
+- **Summary Table** - Provides detailed information about annotations for the current image
 
 ## Keyboard Shortcuts
 

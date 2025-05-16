@@ -17,7 +17,13 @@ from phenotag.ui.components.sidebar import render_sidebar
 from phenotag.ui.components.scanner import handle_scan, should_auto_scan, setup_auto_scan
 from phenotag.ui.components.calendar_view import display_calendar_view
 from phenotag.ui.components.image_display import display_images
-from phenotag.ui.components.annotation import display_annotation_panel, load_day_annotations, save_all_annotations
+from phenotag.ui.components.annotation import (
+    display_annotation_panel, 
+    load_day_annotations, 
+    save_all_annotations, 
+    create_annotation_summary,
+    display_annotation_completion_status
+)
 from phenotag.ui.components.memory_management import memory_manager, memory_dashboard, MemoryTracker
 from phenotag.ui.components.annotation_status import check_day_annotation_status
 from phenotag.ui.components.annotation_timer import annotation_timer
@@ -244,6 +250,10 @@ def main():
                     from phenotag.ui.calendar_component import format_day_range
                     selection_text = format_day_range(selected_days, int(selected_year))
                     st.write(f"Selected range: {selection_text}")
+                
+                # Display annotation completion status if available
+                if selected_day:
+                    display_annotation_completion_status(selected_day)
             
             # Load annotations for the current day
             if selected_day:
@@ -299,21 +309,17 @@ def main():
                 selected_days
             )
     
-    with bottom_container:
-        with MemoryTracker("Annotation Panel"):
-            # Always make sure ROIs are loaded before displaying the annotation panel
-            if selected_instrument and 'instrument_rois' not in st.session_state:
-                # Try to load ROIs before showing annotation panel
-                print("Explicitly loading ROIs before annotation panel display")
-                load_instrument_rois()
-            
-            # Display annotation panel for the current image
-            if 'current_filepath' in st.session_state and st.session_state.current_filepath:
-                # Print info about ROIs
-                if 'instrument_rois' in st.session_state:
-                    print(f"ROIs available for annotation: {list(st.session_state.instrument_rois.keys())}")
-                
-                display_annotation_panel(st.session_state.current_filepath)
+    # We've moved the annotation panel to the image selection column
+    # Make sure ROIs are loaded for use by the annotation panel
+    with MemoryTracker("Load ROIs"):
+        if selected_instrument and 'instrument_rois' not in st.session_state:
+            # Try to load ROIs before showing annotation panel
+            print("Explicitly loading ROIs before annotation panel display")
+            load_instrument_rois()
+        
+        # Print info about ROIs
+        if 'instrument_rois' in st.session_state:
+            print(f"ROIs available for annotation: {list(st.session_state.instrument_rois.keys())}")
     
     # Store important data in session state
     if selected_instrument:
@@ -326,9 +332,15 @@ def main():
             with MemoryTracker("Load ROIs"):
                 load_instrument_rois()
                 
-    # Save annotations before leaving the page
-    if 'image_annotations' in st.session_state and st.session_state.image_annotations:
+    # Save annotations before leaving the page, but skip if just toggling ROI display
+    if ('image_annotations' in st.session_state and 
+        st.session_state.image_annotations and 
+        not st.session_state.get('roi_toggle_changed', False)):
         save_all_annotations()
+    
+    # Reset the toggle flag for the next run
+    if 'roi_toggle_changed' in st.session_state:
+        del st.session_state['roi_toggle_changed']
     
     # Check memory usage and reclaim if necessary
     if memory_manager.check_memory_threshold():
