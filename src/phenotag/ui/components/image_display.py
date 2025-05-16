@@ -317,52 +317,7 @@ def display_selected_image(event, daily_filepaths):
                     print(f"Selected image: {filepath}")
                     print(f"Image stored in session state as current_filepath")
                     
-                    # Add annotation summary below the image in the main column
-                    st.markdown("---")
-                    st.markdown("### Annotation Summary")
                     
-                    # Get annotation summary data
-                    from phenotag.ui.components.annotation import create_annotation_summary
-                    summary = create_annotation_summary(filepath)
-                    
-                    if summary and summary["summary_data"]:
-                        # Create and display the summary dataframe
-                        summary_df = pd.DataFrame(summary["summary_data"])
-                        
-                        # Style the dataframe
-                        st.dataframe(
-                            summary_df,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "Filename": st.column_config.TextColumn("Filename", width="large"),
-                                "ROI": st.column_config.TextColumn("ROI", width="small"),
-                                "Discard": st.column_config.TextColumn("Discard", width="small"),
-                                "Snow Present": st.column_config.TextColumn("Snow Present", width="small"),
-                                "No annotation needed": st.column_config.TextColumn("No annotation needed", width="medium"),
-                                "Flag Count": st.column_config.NumberColumn("Flag Count", width="small"),
-                                "Flags": st.column_config.TextColumn("Flags", width="large")
-                            }
-                        )
-                        
-                        # Display metrics in columns
-                        metrics = summary["metrics"]
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total ROIs", metrics["total_rois"])
-                        
-                        with col2:
-                            st.metric("Discarded ROIs", metrics["discarded_rois"], 
-                                    delta=metrics["discarded_pct"])
-                        
-                        with col3:
-                            st.metric("ROIs with Flags", metrics["flagged_rois"],
-                                    delta=metrics["flagged_pct"])
-                    else:
-                        if summary is None:
-                            st.info("No annotation data available for this image.")
-                        else:
-                            st.info("No annotation data to display.")
                 else:
                     st.error(f"Failed to process image: {filepath}")
             else:

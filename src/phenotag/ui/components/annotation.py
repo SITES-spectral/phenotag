@@ -74,23 +74,17 @@ def display_annotation_button(current_filepath):
                 # Check again if we have annotations
                 has_annotations = current_filepath in st.session_state.image_annotations
     
-    # Create a container for the annotation status and button
-    cols = st.columns([2, 1])
-    
-    # Display annotation status
-    with cols[0]:
-        if has_annotations:
-            st.success("Annotated", icon="✅")
-        else:
-            st.warning("Not annotated", icon="⚠️")
-    
     # Create a button to open the annotation panel
-    with cols[1]:
-        button_key = f"open_annotation_panel_{filename}"
-        button_label = "Annotate" if not has_annotations else "Edit"
-        if st.button(button_label, key=button_key, use_container_width=True):
-            # Show the annotation panel when the button is clicked
-            show_annotation_panel(current_filepath)
+    button_key = f"open_annotation_panel_{filename}"
+    button_label = "Annotate" if not has_annotations else "Edit"
+    
+    if st.button(button_label, key=button_key, use_container_width=True):
+        # Show the annotation panel when the button is clicked
+        show_annotation_panel(current_filepath)
+        
+    # Display annotation status below the button
+    if not has_annotations:
+        st.warning("Not annotated", icon="⚠️")
 
 
 def show_annotation_panel(current_filepath):
@@ -574,12 +568,6 @@ def _create_annotation_interface(current_filepath):
     # Create a list of all ROI names for tabs
     all_roi_names = [row["roi_name"] for row in annotation_data]
     
-    # Create tabs for each ROI
-    roi_tabs = st.tabs(all_roi_names)
-    
-    # Dictionary to track updated flag selections for each ROI
-    updated_flag_selections = {}
-    
     # Add a button to copy ROI_00 settings to all other ROIs
     if "ROI_00" in all_roi_names and len(all_roi_names) > 1:
         # Find ROI_00 data
@@ -604,6 +592,12 @@ def _create_annotation_interface(current_filepath):
                 # Rerun to update UI
                 st.rerun()
     
+    # Create tabs for each ROI
+    roi_tabs = st.tabs(all_roi_names)
+    
+    # Dictionary to track updated flag selections for each ROI
+    updated_flag_selections = {}
+    
     # Process each ROI in its own tab
     for idx, (roi_name, roi_tab) in enumerate(zip(all_roi_names, roi_tabs)):
         with roi_tab:
@@ -611,51 +605,50 @@ def _create_annotation_interface(current_filepath):
             roi_data = annotation_data[idx]
             
             # Create a unique key based on roi_name and image_key
-            roi_key = f"{roi_name}_{image_key}_popup"
+            roi_key = f"{roi_name}_{os.path.basename(image_key)}_popup"
             
-            # Create columns for the ROI settings
-            roi_col1, roi_col2 = st.columns([1, 1])
+            # Layout for the annotation controls - avoid nesting columns by putting all controls in a single area
+            # Create checkbox for discard
+            discard = st.checkbox(
+                "Discard", 
+                value=roi_data.get('discard', False),
+                key=f"discard_{roi_key}",
+                help="Mark this image/ROI as not suitable for analysis"
+            )
             
-            with roi_col1:
-                # Create checkbox for discard
-                discard = st.checkbox(
-                    "Discard", 
-                    value=roi_data.get('discard', False),
-                    key=f"discard_{roi_key}",
-                    help="Mark this image/ROI as not suitable for analysis"
-                )
-                
-                # Create checkbox for snow presence
-                snow_presence = st.checkbox(
-                    "Snow Present", 
-                    value=roi_data.get('snow_presence', False),
-                    key=f"snow_{roi_key}",
-                    help="Mark if snow is present in this ROI"
-                )
-                
-                # Create checkbox for not needed status
-                not_needed = st.checkbox(
-                    "No annotation needed", 
-                    value=roi_data.get('not_needed', False),
-                    key=f"not_needed_{roi_key}",
-                    help="Mark if this ROI doesn't need detailed annotation"
-                )
+            # Create checkbox for snow presence
+            snow_presence = st.checkbox(
+                "Snow Present", 
+                value=roi_data.get('snow_presence', False),
+                key=f"snow_{roi_key}",
+                help="Mark if snow is present in this ROI"
+            )
             
-            with roi_col2:
-                # Flatten the options for the multiselect
-                multiselect_options = []
-                for category in sorted(flags_by_category.keys()):
-                    multiselect_options.extend(flags_by_category[category])
-                
-                # Select flags with this multiselect
-                selected_flags = st.multiselect(
-                    "Quality Flags",
-                    options=[value for value, _ in multiselect_options],
-                    format_func=lambda x: next((label for value, label in multiselect_options if value == x), x),
-                    default=roi_data.get('flags', []),
-                    key=f"flags_{roi_key}",
-                    help="Select quality flags applicable to this ROI"
-                )
+            # Create checkbox for not needed status
+            not_needed = st.checkbox(
+                "No annotation needed", 
+                value=roi_data.get('not_needed', False),
+                key=f"not_needed_{roi_key}",
+                help="Mark if this ROI doesn't need detailed annotation"
+            )
+            
+            # Add a separator
+            st.markdown("---")
+            
+            # Flatten the options for the multiselect
+            multiselect_options = []
+            for category in sorted(flags_by_category.keys()):
+                multiselect_options.extend(flags_by_category[category])
+            
+            # Select flags with this multiselect
+            selected_flags = st.multiselect(
+                "Quality Flags",
+                options=[value for value, _ in multiselect_options],
+                format_func=lambda x: next((label for value, label in multiselect_options if value == x), x),
+                default=roi_data.get('flags', []),
+                key=f"flags_{roi_key}",
+                help="Select quality flags applicable to this ROI"
+            )
             
             # Store the selected flags and settings
             updated_flag_selections[roi_name] = {
