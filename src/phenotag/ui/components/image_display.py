@@ -144,6 +144,15 @@ def display_image_list(daily_filepaths):
                 # Set current_filepath based on the new selection
                 if 0 <= selected_index < len(daily_filepaths):
                     st.session_state.current_filepath = daily_filepaths[selected_index]
+                    print(f"Set current_filepath to {daily_filepaths[selected_index]}")
+                else:
+                    # Handle case where index is out of range
+                    print(f"Warning: selected_index {selected_index} is out of range for daily_filepaths with length {len(daily_filepaths)}")
+                    # Reset to valid index if possible
+                    if daily_filepaths:
+                        st.session_state.selected_image_index = 0
+                        st.session_state.current_filepath = daily_filepaths[0]
+                        print(f"Reset to index 0: {daily_filepaths[0]}")
                     
                 # Force a rerun to update the UI and annotation panel
                 st.rerun()
@@ -219,10 +228,30 @@ def display_selected_image(event, daily_filepaths):
             if processor.load_image(filepath):
                 # Check if we have instrument ROIs loaded
                 if st.session_state.get('show_roi_overlays', False):
+                    # Verify that we have the correct ROIs for the current instrument
+                    inst_id = st.session_state.get('selected_instrument')
+                    roi_inst_id = st.session_state.get('roi_instrument_id')
+                    
+                    # If ROIs don't match current instrument, try to load them
+                    if inst_id != roi_inst_id:
+                        print(f"ROIs don't match current instrument: {roi_inst_id} vs {inst_id}")
+                        from phenotag.ui.main import load_instrument_rois
+                        load_instrument_rois()  # Will load correct ROIs for current instrument
+                    
                     if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
                         # Use the instrument-specific ROIs from the stations configuration
                         # Debug the ROI structure
                         print(f"Applying ROIs: {list(st.session_state.instrument_rois.keys())}")
+                        
+                        # Verify ROIs are for the correct instrument
+                        inst_id = st.session_state.get('selected_instrument')
+                        roi_inst_id = st.session_state.get('roi_instrument_id')
+                        selected_station = st.session_state.get('selected_station_normalized')
+                        
+                        # Display a warning if ROI instrument doesn't match selected instrument
+                        if roi_inst_id != inst_id:
+                            print(f"WARNING: ROI instrument ({roi_inst_id}) doesn't match selected instrument ({inst_id})!")
+                            st.warning(f"ROI overlays are from instrument {roi_inst_id}, but you're viewing {inst_id}. ROIs may not be accurate.")
 
                         # Try the built-in ImageProcessor function first with our improved ROI format
                         try:
@@ -236,7 +265,7 @@ def display_selected_image(event, daily_filepaths):
                                 if 'points' in first_roi and isinstance(first_roi['points'][0], list):
                                     # If points are still lists, convert to tuples
                                     print("ROIs in YAML format detected, performing conversion")
-                                    from phenotag.ui.main import deserialize_polygons  # Import here to avoid circular imports
+                                    from phenotag.ui.components.roi_utils import deserialize_polygons
                                     roi_dict = deserialize_polygons(roi_dict)
 
                             # Apply ROIs using the built-in method
@@ -297,8 +326,16 @@ def display_selected_image(event, daily_filepaths):
                         # Information about ROIs is now provided directly in the image via labels
                         # We don't need to show an info message above the image
                     else:
-                        # Now that we've fixed the format issues, re-enable default ROI generation
-                        processor.create_default_roi()
+                        # Try one more time to load ROIs for current instrument
+                        print("No ROIs found, trying to load for current instrument...")
+                        from phenotag.ui.main import load_instrument_rois
+                        roi_loaded = load_instrument_rois()
+                        
+                        # If still no ROIs, create a default ROI
+                        if not roi_loaded:
+                            processor.create_default_roi()
+                            print("Created default ROI since no instrument ROIs were found")
+                            st.info("Using default ROI since no instrument-specific ROIs were found.")
                         # No informational message required now that ROIs are labeled in the image
 
                 # Store the image dimensions (for future ROI adjustments if needed)
@@ -491,9 +528,12 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                     if 'show_roi_overlays' not in st.session_state:
                         st.session_state.show_roi_overlays = False
 
-                    # Simple toggle for ROI display
-                    show_rois = st.toggle("Show ROI Overlays", value=st.session_state.show_roi_overlays,
-                                        help="Toggle to show region of interest overlays on the image",
+                    # Get current instrument name for the toggle label
+                    current_instrument = st.session_state.get('selected_instrument', 'Unknown')
+                    
+                    # Simple toggle for ROI display with instrument info
+                    show_rois = st.toggle(f"Show ROI Overlays for {current_instrument}", value=st.session_state.show_roi_overlays,
+                                        help=f"Toggle to show region of interest overlays for instrument {current_instrument}",
                                         key="show_roi_toggle")
 
                     # Update session state when toggle changes
@@ -587,6 +627,13 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                         # Set the current filepath in session state BEFORE displaying
                         st.session_state.current_filepath = selected_filepath
                         print(f"Set current_filepath directly from selected_index: {selected_filepath}")
+                    elif daily_filepaths:
+                        # If index is invalid but we have filepaths, reset to the first one
+                        selected_index = 0
+                        st.session_state.selected_image_index = 0
+                        selected_filepath = daily_filepaths[0]
+                        st.session_state.current_filepath = selected_filepath
+                        print(f"Reset selected_image_index to 0 and set current_filepath: {selected_filepath}")
                     
                     # Now display the image (still using the event for compatibility)
                     displayed_filepath = display_selected_image(event, daily_filepaths)
@@ -595,6 +642,13 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                     if displayed_filepath and displayed_filepath != st.session_state.get('current_filepath'):
                         st.session_state.current_filepath = displayed_filepath
                         print(f"Updated current_filepath from display result: {displayed_filepath}")
+                    elif not displayed_filepath and daily_filepaths:
+                        # If no filepath was displayed but we have filepaths, try forcing the first one
+                        st.session_state.selected_image_index = 0
+                        st.session_state.current_filepath = daily_filepaths[0]
+                        print(f"No filepath displayed, reset to first image: {daily_filepaths[0]}")
+                        # Force a rerun to update the UI
+                        st.rerun()
             else:
                 # No files found for the selected days
                 if selected_days:

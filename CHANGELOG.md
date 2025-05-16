@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preservation of previous annotation time when updating files
   - Improved time tracking to avoid double-counting
   - Better display of total annotation time in the UI
+- **Improved ROI visualization and handling:**
+  - Enhanced ROI validation with detailed error handling
+  - Automatic correction of ROI points that are outside image boundaries
+  - Added warning when ROI instrument doesn't match selected instrument
+  - Better debugging information for ROI processing
+  - Added points validation to ensure ROIs are displayed correctly
+  - ROI labels now stay within image boundaries
+  - Reset ROI overlay toggle when station or instrument changes
+  - Improved ROI loading to ensure correct ROIs are displayed for the selected station and instrument
+  - Better error handling when ROIs can't be found for the current station/instrument
+  - Added instrument name to the ROI overlay toggle for clarity
+- **Enhanced image selection handling:**
+  - Reset image selection when station, instrument, year, or month changes
+  - Improved handling of invalid image selection indices
+  - Better handling when daily filepaths change
+  - Added automatic recovery when image selection is out of bounds
+  - Added detailed debugging information for image selection changes
 
 ### Fixed
 - Fixed an undefined `annotation_time_minutes` error in the annotation saving function
@@ -31,10 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added detailed debug logging to track annotation changes
   - Fixed type inconsistencies in flag comparisons
 - **Enhanced "Copy ROI_00 Settings to All ROIs" behavior:**
-  - Changed from persistent linkage to a one-time copy operation
-  - Added checkboxes to select which settings to copy (flags, discard, snow presence)
-  - Allows individual customization of ROIs after copying common settings
-  - More descriptive success message showing which settings were copied
+  - Fixed issue where copy operation wasn't correctly updating all ROIs
+  - Implemented proper deep copying to avoid reference issues
+  - Added better debug logging for copy operations
+  - Ensured proper synchronization between temporary and permanent storage
+- **Fixed annotation saving and loading issues:**
+  - Improved widget callback functions to properly capture values
+  - Enhanced storage synchronization between temporary and permanent stores
+  - Fixed lambda closure issues with proper variable capture
+  - Added more robust error handling throughout annotation system
+- **Removed problematic UI elements:**
+  - Removed the "View Raw Annotation Data" button that was causing errors
+  - Replaced with more robust annotation panel interface
 
 ### Added
 - New UI guide documentation (`docs/ui_guide.md`)
@@ -112,6 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved annotation panel with status indicators and auto-save
   - Enhanced layout with better use of containers and columns
   - Simplified UI by removing tab interface - focused on current image annotation only
+  - Removed deprecated "View Raw Annotation Data" button
+  - Improved error handling for ROI display and annotation operations
 
 ### Fixed
 - Fixed critical issue with calendar not showing correct image counts for certain days
@@ -127,6 +154,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced debugging for annotation operations
   - Fixed session state conflict with auto-save widgets when switching between tabs
   - Implemented tab-specific session state keys to prevent widget conflicts
+- Fixed syntax error in annotation.py with proper indentation
+- Fixed synchronization issues between temporary and permanent annotation storage
+- Fixed copy ROI_00 settings functionality to correctly propagate to all ROIs
+- Fixed lambda function closures in checkbox callbacks
 
 ## [0.2.0] - 2025-05-12
 

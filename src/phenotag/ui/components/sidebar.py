@@ -106,9 +106,34 @@ def render_sidebar():
             if 'annotation_status_map' in st.session_state:
                 st.session_state.annotation_status_map = {}
                 print("Cleared annotation status cache due to station change")
+                
+            # Reset ROI overlay toggle and clear instrument ROIs when station changes
+            if 'show_roi_overlays' in st.session_state:
+                st.session_state.show_roi_overlays = False
+                print("Reset ROI overlay toggle due to station change")
+            
+            # Clear any loaded ROI data
+            if 'instrument_rois' in st.session_state:
+                st.session_state.instrument_rois = {}
+                print("Cleared instrument ROIs due to station change")
+                
+            # Reset selected image index
+            if 'selected_image_index' in st.session_state:
+                st.session_state.selected_image_index = 0
+                print("Reset selected image index due to station change")
+                
+            # Reset current filepath
+            if 'current_filepath' in st.session_state:
+                st.session_state.current_filepath = None
+                print("Reset current filepath due to station change")
 
         # Update the selected station
         st.session_state.selected_station = selected_station
+        
+        # Also store the normalized station name for ROI loading
+        if selected_station in station_name_to_normalized:
+            normalized_name = station_name_to_normalized[selected_station]
+            st.session_state.selected_station_normalized = normalized_name
 
         # Clear selected instrument when station changes to force rescanning
         if station_changed:
@@ -167,6 +192,26 @@ def render_sidebar():
                     if 'annotation_status_map' in st.session_state:
                         st.session_state.annotation_status_map = {}
                         print("Cleared annotation status cache due to instrument change")
+                        
+                    # Reset ROI overlay toggle and clear instrument ROIs when instrument changes
+                    if 'show_roi_overlays' in st.session_state:
+                        st.session_state.show_roi_overlays = False
+                        print("Reset ROI overlay toggle due to instrument change")
+                    
+                    # Clear any loaded ROI data
+                    if 'instrument_rois' in st.session_state:
+                        st.session_state.instrument_rois = {}
+                        print("Cleared instrument ROIs due to instrument change")
+                        
+                    # Reset selected image index
+                    if 'selected_image_index' in st.session_state:
+                        st.session_state.selected_image_index = 0
+                        print("Reset selected image index due to instrument change")
+                        
+                    # Reset current filepath
+                    if 'current_filepath' in st.session_state:
+                        st.session_state.current_filepath = None
+                        print("Reset current filepath due to instrument change")
 
                 st.session_state.selected_instrument = selected_instrument
 

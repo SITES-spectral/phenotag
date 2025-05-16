@@ -33,76 +33,115 @@ def load_instrument_rois():
     Load ROI definitions for current instrument from stations configuration.
     Returns True if ROIs were successfully loaded, False otherwise.
     """
-    if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
-        scan_info = st.session_state.scan_info
-        station_name = scan_info['station_name']
-        instrument_id = scan_info['instrument_id']
-
-        # Load configuration
+    # Get the current station and instrument from session state
+    station_name = st.session_state.get('selected_station_normalized')
+    instrument_id = st.session_state.get('selected_instrument')
+    
+    # If no station or instrument is selected, try to get from scan_info
+    if not station_name or not instrument_id:
+        if hasattr(st.session_state, 'scan_info') and st.session_state.scan_info.get('lazy_loaded'):
+            scan_info = st.session_state.scan_info
+            station_name = scan_info.get('station_name')
+            instrument_id = scan_info.get('instrument_id')
+    
+    # Ensure we have a normalized station name
+    if not station_name and 'selected_station' in st.session_state:
+        # Get the normalized name from the display name
         config = load_config_files()
         stations_config = config.get('stations', {}).get('stations', {})
+        for norm_name, station_info in stations_config.items():
+            if station_info.get('name') == st.session_state.selected_station:
+                station_name = norm_name
+                # Store for future use
+                st.session_state.selected_station_normalized = norm_name
+                break
+    
+    # If we still don't have both station name and instrument id, return False
+    if not station_name or not instrument_id:
+        print(f"Cannot load ROIs: Missing station name ({station_name}) or instrument ID ({instrument_id})")
+        return False
 
-        # Extract ROIs for this instrument
-        rois_found = False
+    # Load configuration
+    config = load_config_files()
+    stations_config = config.get('stations', {}).get('stations', {})
 
-        # Find the station in the configuration by normalized name
-        if station_name in stations_config:
-            station_data = stations_config[station_name]
+    # Extract ROIs for this instrument
+    rois_found = False
 
-            # Check if phenocams exists
-            if 'phenocams' not in station_data:
-                print(f"ERROR: 'phenocams' key missing in station data")
-                return False
-            elif 'platforms' not in station_data['phenocams']:
-                print(f"ERROR: 'platforms' key missing in phenocams data")
-                return False
-            else:
-                # List available platforms
-                platforms = station_data['phenocams']['platforms']
+    # Find the station in the configuration by normalized name
+    if station_name in stations_config:
+        station_data = stations_config[station_name]
 
-                # Check each platform for the instrument
-                for platform_type, platform_data in platforms.items():
-                    if 'instruments' not in platform_data:
-                        continue
-
-                    # List instruments in this platform
-                    instruments = platform_data['instruments']
-
-                    if instrument_id in instruments:
-                        instrument_config = instruments[instrument_id]
-
-                        # Check if the instrument has ROIs
-                        if 'rois' in instrument_config:
-                            rois = instrument_config['rois']
-
-                            # Check if it has ROIs defined
-                            if rois:
-                                try:
-                                    # Process the ROIs using our improved deserialize function
-                                    from phenotag.ui.components.roi_utils import deserialize_polygons
-                                    processed_rois = deserialize_polygons(instrument_config['rois'])
-
-                                    # Store the processed ROIs in session state
-                                    st.session_state.instrument_rois = processed_rois
-                                except Exception as e:
-                                    print(f"Error processing ROIs: {str(e)}")
-                                    # Fallback to storing the original format which our custom overlay function can handle
-                                    st.session_state.instrument_rois = instrument_config['rois']
-
-                                st.session_state.roi_instrument_id = instrument_id
-                                st.session_state.roi_source = f"stations.yaml - {station_name}"
-
-                                # Get ROI names for display
-                                roi_names = list(instrument_config['rois'].keys())
-                                rois_found = True
-                                return True  # Successfully loaded ROIs
-
-        # If we get here, no ROIs were found
-        if not rois_found:
-            print(f"No ROI definitions found for instrument {instrument_id} in station {station_name}")
+        # Check if phenocams exists
+        if 'phenocams' not in station_data:
+            print(f"ERROR: 'phenocams' key missing in station data")
             return False
-    else:
-        print("Scan information not available. Please scan for images first.")
+        elif 'platforms' not in station_data['phenocams']:
+            print(f"ERROR: 'platforms' key missing in phenocams data")
+            return False
+        else:
+            # List available platforms
+            platforms = station_data['phenocams']['platforms']
+
+            # Check each platform for the instrument
+            for platform_type, platform_data in platforms.items():
+                if 'instruments' not in platform_data:
+                    continue
+
+                # List instruments in this platform
+                instruments = platform_data['instruments']
+
+                if instrument_id in instruments:
+                    instrument_config = instruments[instrument_id]
+
+                    # Check if the instrument has ROIs
+                    if 'rois' in instrument_config:
+                        rois = instrument_config['rois']
+
+                        # Check if it has ROIs defined
+                        if rois:
+                            try:
+                                # Process the ROIs using our improved deserialize function
+                                from phenotag.ui.components.roi_utils import deserialize_polygons
+                                processed_rois = deserialize_polygons(instrument_config['rois'])
+
+                                # Store the processed ROIs in session state
+                                st.session_state.instrument_rois = processed_rois
+                            except Exception as e:
+                                print(f"Error processing ROIs: {str(e)}")
+                                # Fallback to storing the original format which our custom overlay function can handle
+                                st.session_state.instrument_rois = instrument_config['rois']
+
+                            st.session_state.roi_instrument_id = instrument_id
+                            st.session_state.roi_source = f"stations.yaml - {station_name}"
+
+                            # Get ROI names for display
+                            roi_names = list(instrument_config['rois'].keys())
+                            rois_found = True
+                            print(f"Successfully loaded ROIs for instrument {instrument_id} in station {station_name}: {roi_names}")
+                            return True  # Successfully loaded ROIs
+
+    # If we get here, no ROIs were found
+    if not rois_found:
+        print(f"No ROI definitions found for instrument {instrument_id} in station {station_name}")
+        
+        # Add debug information about the station config
+        print(f"Available stations in config: {list(stations_config.keys())}")
+        if station_name in stations_config:
+            if 'phenocams' in stations_config[station_name]:
+                if 'platforms' in stations_config[station_name]['phenocams']:
+                    platforms = stations_config[station_name]['phenocams']['platforms']
+                    print(f"Available platforms: {list(platforms.keys())}")
+                    for platform_type, platform_data in platforms.items():
+                        if 'instruments' in platform_data:
+                            print(f"Instruments in platform {platform_type}: {list(platform_data['instruments'].keys())}")
+                else:
+                    print("No 'platforms' key in phenocams data")
+            else:
+                print("No 'phenocams' key in station data")
+        else:
+            print(f"Station {station_name} not found in config")
+            
         return False
 
 

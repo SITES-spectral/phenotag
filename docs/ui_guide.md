@@ -19,6 +19,7 @@ The sidebar contains the following elements:
 - **Title and Caption** - Identifies the application
 - **Station Selection** - Dropdown for selecting a monitoring station
 - **Instrument Selection** - Dropdown for selecting a phenocam at the chosen station
+- **Calendar View** - Interactive calendar for selecting dates
 - **Configuration Panel** - Expandable section for setting up the application
   - Data Directory: Input field for the root data directory
   - Session Management: Buttons for saving and resetting the session
@@ -32,7 +33,7 @@ The main content area is organized into a two-column layout:
   - Image selection radio buttons
   - ROI overlay toggle
   - ROI legend (when overlays are enabled)
-  - Annotation panel with "No annotation needed" button and popup interface
+  - Annotation panel button to open the annotation interface
 
 - **Right Column** (Image Display):
   - Selected image with full detail and optional ROI overlays
@@ -51,25 +52,32 @@ The main content area is organized into a two-column layout:
 ### 2. Image Selection
 
 1. After scanning, select a year from the dropdown
-2. Select a day from the second dropdown
+2. Select a day from the calendar or day dropdown
 3. The application will load images for that day
 
 ### 3. Image Annotation
 
 1. Select an image using the radio buttons in the left column
 2. View the image in the right column with optional ROI overlays
-3. For images that don't need annotation, click the "No annotation needed" button
-4. For images that require annotation:
-   - Click on the "Annotation Panel" popover in the left sidebar
+3. For images that require annotation:
+   - Click on the "Annotation Panel" button in the left sidebar
    - Use the tabbed interface to annotate each ROI:
      - Mark ROIs for discarding (checkbox)
      - Indicate snow presence (checkbox)
      - Select quality flags (multiselect)
-   - Click "💾 Save & Close" to save your annotations and close the panel
-5. View the annotation summary below the image in the right column
-6. To reset annotations for the current day, use the "🔄 Reset All Annotations" button in the annotation panel
+   - Use "Copy ROI_00 Settings to All ROIs" button to apply settings from the main ROI to all other ROIs
+   - Click "💾 Save Annotations" to save your annotations
+   - Click outside the panel to close it
+4. View the annotation summary below the image in the right column
 
-### 4. Session Management
+### 4. Using ROI Overlays
+
+1. Toggle "Show ROI Overlays" to display Region of Interest polygons on the image
+2. ROIs are automatically loaded from the stations.yaml configuration for the current instrument
+3. Each ROI is displayed with its name and a unique color
+4. Use the ROI overlays to guide your annotation decisions
+
+### 5. Session Management
 
 - Session state is automatically saved in `~/.phenotag/sites_spectral_phenocams_session_config.yaml`
 - Use "💾 Save Session" to manually save your current selections

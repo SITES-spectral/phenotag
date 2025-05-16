@@ -78,6 +78,14 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
         st.session_state.selected_month = None
         # Reset selected days
         st.session_state.selected_days = []
+        # Reset selected image index
+        if 'selected_image_index' in st.session_state:
+            st.session_state.selected_image_index = 0
+            print("Reset selected image index due to year change")
+        # Reset current filepath
+        if 'current_filepath' in st.session_state:
+            st.session_state.current_filepath = None
+            print("Reset current filepath due to year change")
         # Reset image_annotations to ensure we reload them for the new year
         if 'image_annotations' in st.session_state:
             # No auto-save when changing year
@@ -126,6 +134,14 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
         st.session_state.selected_days = []
         # Reset selected day
         st.session_state.selected_day = None
+        # Reset selected image index
+        if 'selected_image_index' in st.session_state:
+            st.session_state.selected_image_index = 0
+            print("Reset selected image index due to month change")
+        # Reset current filepath
+        if 'current_filepath' in st.session_state:
+            st.session_state.current_filepath = None
+            print("Reset current filepath due to month change")
         
         # Clear annotations without auto-saving when changing months
         if 'image_annotations' in st.session_state and st.session_state.image_annotations:
