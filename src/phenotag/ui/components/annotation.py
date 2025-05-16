@@ -804,6 +804,7 @@ def save_all_annotations(force_save=False):
                         annotations_data = {
                             "created": existing_data.get("created", datetime.datetime.now().isoformat()),
                             "day_of_year": doy,
+                            "year": selected_year,  # Include the year in metadata
                             "station": st.session_state.selected_station,
                             "instrument": st.session_state.selected_instrument,
                             "annotation_time_minutes": total_annotation_time,

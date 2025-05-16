@@ -53,7 +53,7 @@ def load_annotations(base_dir: str, station_name: str,
         
         # Construct the path to the annotations file
         annotations_dir = Path(base_dir) / normalized_name / 'phenocams' / 'products' / instrument_id / 'L1' / str(year) / str(day)
-        annotations_file = annotations_dir / 'annotations.yaml'
+        annotations_file = annotations_dir / f'annotations_{day}.yaml'  # Use the day in the filename
         
         # Check if file exists
         if annotations_file.exists():

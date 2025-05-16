@@ -61,11 +61,17 @@ def create_image_dataframe(year_data, day, max_items=10):
             else:
                 thumbnail = None
             
+            # Check if the image has been annotated
+            is_annotated = False
+            if 'image_annotations' in st.session_state:
+                is_annotated = file_path in st.session_state.image_annotations
+            
             # Create a row for each file
             row = {
                 'file_path': file_path,
                 'filename': os.path.basename(file_path),  # Store the filename for display
                 'thumbnail': thumbnail,  # Store the base64 thumbnail
+                'annotated': is_annotated,  # Flag to show if image has been annotated
                 'discard_file': quality['discard_file'],
                 'snow_presence': quality['snow_presence']
             }
@@ -142,6 +148,14 @@ def display_image_list(daily_filepaths):
             dates.append("Unknown")
             doys.append("Unknown")
 
+    # Check annotation status for each file
+    annotation_status = []
+    for filepath in daily_filepaths:
+        if 'image_annotations' in st.session_state:
+            annotation_status.append(filepath in st.session_state.image_annotations)
+        else:
+            annotation_status.append(False)
+    
     # Create a dataframe with proper index to avoid PyArrow conversion issues
     df = pd.DataFrame(
         data={
@@ -149,6 +163,7 @@ def display_image_list(daily_filepaths):
             "DOY": doys,          # Column with DOY values
             "Date": dates,        # Column with Date values
             "Time": timestamps,   # Column with Time values
+            "Annotated": annotation_status,  # Column for annotation status
             "_index": list(range(len(daily_filepaths)))  # Add proper numeric index
         }
     )
@@ -174,6 +189,12 @@ def display_image_list(daily_filepaths):
                 "Time",
                 help="Click to select this file",
                 width="small"
+            ),
+            "Annotated": st.column_config.CheckboxColumn(
+                "✓",       # Column shows a checkmark for annotated images
+                help="Indicates if the image has been annotated",
+                width="small",
+                disabled=True  # User can't modify this directly
             )
         },
         use_container_width=True,
