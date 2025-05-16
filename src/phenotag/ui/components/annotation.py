@@ -492,25 +492,15 @@ def display_raw_annotation_button(station_name, instrument_id, year, day):
     """
     Display a button that opens a popover with the raw annotation data.
     
+    This function is deprecated and no longer called from the main UI.
+    
     Args:
         station_name (str): Station name
         instrument_id (str): Instrument ID
         year (str): Year
         day (str): Day of year
     """
-    if not day:
-        return
-        
-    # Create a unique key for the button
-    button_key = f"view_raw_annotations_{day}"
-    
-    # Add some space before the button
-    st.markdown("---")
-    
-    # Create the button to view raw annotations
-    if st.button("📄 View Raw Annotation Data", key=button_key, use_container_width=True):
-        # When the button is clicked, show the raw annotation data
-        display_raw_annotation_data(station_name, instrument_id, year, day)
+    pass  # This button has been removed from the UI
 
 
 def display_raw_annotation_data(station_name, instrument_id, year, day):
@@ -545,6 +535,7 @@ def display_raw_annotation_data(station_name, instrument_id, year, day):
             )
             
             # Check if the directory exists
+            print(f"Looking for annotation files in directory: {day_dir}")
             if os.path.exists(day_dir):
                 # Get all annotation files in the directory
                 per_image_files = glob.glob(os.path.join(day_dir, "*_annotations.yaml"))
@@ -946,7 +937,10 @@ def display_raw_annotation_data(station_name, instrument_id, year, day):
                 else:
                     st.warning(f"No annotation files found for day {day}")
             else:
-                st.warning(f"Day directory not found: {day_dir}")
+                # Print debug info but don't show warning to user
+                print(f"Day directory not found: {day_dir}")
+                # Return silently instead of showing a warning
+                return
         else:
             st.warning("Base directory not found in scan info")
     else:

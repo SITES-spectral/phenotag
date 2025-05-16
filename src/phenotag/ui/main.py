@@ -331,15 +331,7 @@ def main():
                 selected_days
             )
             
-            # Add a button to view raw annotation data at the bottom
-            if selected_day:
-                from phenotag.ui.components.annotation import display_raw_annotation_button
-                display_raw_annotation_button(
-                    normalized_name,
-                    selected_instrument,
-                    selected_year,
-                    selected_day
-                )
+            # Removed the raw annotation data button - using annotation panel instead
     
     # We've moved the annotation panel to the image selection column
     # Make sure ROIs are loaded for use by the annotation panel
