@@ -804,9 +804,9 @@ def save_all_annotations(force_save=False):
                         annotations_data = {
                             "created": existing_data.get("created", datetime.datetime.now().isoformat()),
                             "day_of_year": doy,
-                            "year": selected_year,  # Include the year in metadata
-                            "station": st.session_state.selected_station,
-                            "instrument": st.session_state.selected_instrument,
+                            "year": st.session_state.selected_year if 'selected_year' in st.session_state else None,  # Include the year in metadata
+                            "station": st.session_state.selected_station if 'selected_station' in st.session_state else None,
+                            "instrument": st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None,
                             "annotation_time_minutes": total_annotation_time,
                             "annotations": day_annotations
                         }
@@ -826,12 +826,14 @@ def save_all_annotations(force_save=False):
                         try:
                             if 'annotation_status_map' in st.session_state:
                                 # Extract month from day number
-                                selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
-                                date = datetime.datetime.strptime(f"{selected_year}-{doy}", "%Y-%j") if selected_year else datetime.datetime.now()
+                                current_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
+                                date = datetime.datetime.strptime(f"{current_year}-{doy}", "%Y-%j") if current_year else datetime.datetime.now()
                                 month = date.month
                                 
                                 # Create status key
-                                status_key = f"{st.session_state.selected_station}_{st.session_state.selected_instrument}_{selected_year}_{month}"
+                                selected_station = st.session_state.selected_station if 'selected_station' in st.session_state else 'unknown'
+                                selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else 'unknown'
+                                status_key = f"{selected_station}_{selected_instrument}_{current_year}_{month}"
                                 
                                 # Update or create cache entry
                                 if status_key not in st.session_state.annotation_status_map:
@@ -858,9 +860,9 @@ def save_all_annotations(force_save=False):
                                     from phenotag.ui.components.annotation_status_manager import save_status_to_l1_parent
                                     save_status_to_l1_parent(
                                         current_base_dir,
-                                        st.session_state.selected_station,
-                                        st.session_state.selected_instrument,
-                                        selected_year,
+                                        selected_station,
+                                        selected_instrument,
+                                        current_year,
                                         month,
                                         doy,
                                         'completed'
@@ -872,13 +874,15 @@ def save_all_annotations(force_save=False):
                                 # Also update status for historical view if needed
                                 if 'historical_year' in st.session_state and 'historical_month' in st.session_state:
                                     # Create historical status key
-                                    hist_status_key = f"{st.session_state.selected_station}_{st.session_state.selected_instrument}_{st.session_state.historical_year}_{st.session_state.historical_month}"
+                                    historical_year = st.session_state.historical_year if 'historical_year' in st.session_state else None
+                                    historical_month = st.session_state.historical_month if 'historical_month' in st.session_state else None
+                                    hist_status_key = f"{selected_station}_{selected_instrument}_{historical_year}_{historical_month}"
                                     
                                     # Only update if the day is from the historical month/year
-                                    hist_year = int(st.session_state.historical_year)
-                                    hist_month = st.session_state.historical_month
+                                    hist_year = int(historical_year) if historical_year is not None else 0
+                                    hist_month = historical_month
                                     
-                                    if hist_year == int(selected_year) and hist_month == month:
+                                    if hist_year == int(current_year) and hist_month == month:
                                         # Update historical cache
                                         if hist_status_key not in st.session_state.annotation_status_map:
                                             st.session_state.annotation_status_map[hist_status_key] = {}
