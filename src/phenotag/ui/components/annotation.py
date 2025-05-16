@@ -74,13 +74,9 @@ def display_annotation_button(current_filepath):
                 # Check again if we have annotations
                 has_annotations = current_filepath in st.session_state.image_annotations
     
-    # Create a button to open the annotation panel
-    button_key = f"open_annotation_panel_{filename}"
-    button_label = "Annotate" if not has_annotations else "Edit"
     
-    if st.button(button_label, key=button_key, use_container_width=True):
-        # Show the annotation panel when the button is clicked
-        show_annotation_panel(current_filepath)
+    # Show the annotation panel when the button is clicked
+    show_annotation_panel(current_filepath)
         
     # Display annotation status below the button
     if not has_annotations:
@@ -107,9 +103,22 @@ def show_annotation_panel(current_filepath):
     # Record user interaction when annotation is viewed
     annotation_timer.record_interaction()
     
+    # Initialize temporary annotations if needed
+    if 'temp_annotations' not in st.session_state:
+        st.session_state.temp_annotations = {}
+    
+    # Load the existing annotations into temporary storage if this is the first time viewing this image
+    if current_filepath not in st.session_state.temp_annotations and 'image_annotations' in st.session_state:
+        if current_filepath in st.session_state.image_annotations:
+            # Copy the existing annotations to temp storage
+            st.session_state.temp_annotations[current_filepath] = st.session_state.image_annotations[current_filepath].copy()
+            print(f"Loaded existing annotations into temporary storage for {filename}")
+        else:
+            # No existing annotations to load
+            print(f"No existing annotations found for {filename}")
+    
     # Display the popover
-    popover_title = f"Annotation Panel - {filename}"
-    with st.popover(popover_title):
+    with st.popover(f'Annotation Panel - {filename}'):
         # Show image filename at the top for confirmation
         st.markdown(f"**Currently annotating:** {filename}")
         st.markdown("---")
@@ -117,43 +126,49 @@ def show_annotation_panel(current_filepath):
         # Show the No annotation needed button
         no_annotation_key = f"no_annotation_needed_{filename}"
         if st.button("No annotation needed", key=no_annotation_key, use_container_width=True):
-            # Create default annotations with "not needed" flag
-            create_default_annotations(current_filepath)
-            
-            # Force save
-            save_all_annotations(force_save=True)
+            # Create default annotations with "not needed" flag in temporary storage
+            annotation_data = create_default_annotations(current_filepath, use_temp_storage=True)
             
             # Show success message
             st.success(f"Marked {filename} as not needing annotation")
         
         # Add the reset all annotations button
         reset_key = f"reset_all_annotations_{filename}"
-        if st.button("🔄 Reset All Annotations", key=reset_key, use_container_width=True):
-            # Get the current day
-            img_dir = os.path.dirname(current_filepath)
-            current_day = os.path.basename(img_dir)
-            
-            # Get all images for this day
-            daily_filepaths = []
-            for img_path in st.session_state.image_annotations:
-                img_dir = os.path.dirname(img_path)
-                img_doy = os.path.basename(img_dir)
-                if img_doy == current_day:
-                    daily_filepaths.append(img_path)
-            
-            # Clear annotations for all images in this day
-            for filepath in daily_filepaths:
-                if filepath in st.session_state.image_annotations:
-                    del st.session_state.image_annotations[filepath]
+        if st.button("🔄 Reset Annotations", key=reset_key, use_container_width=True):
+            # Clear annotations for this image in temporary storage
+            if current_filepath in st.session_state.temp_annotations:
+                del st.session_state.temp_annotations[current_filepath]
+                print(f"Reset temporary annotations for {filename}")
             
             # Show confirmation
-            st.success(f"Reset all annotations for day {current_day}")
+            st.success(f"Reset annotations for {filename}")
         
-        # Now include the actual annotation interface
-        _create_annotation_interface(current_filepath)
+        # Now include the actual annotation interface (will use temp storage)
+        _create_annotation_interface(current_filepath, use_temp_storage=True)
         
-        # Add a note about the Save & Close behavior
-        st.caption("Note: Click outside this panel to close. Changes are saved automatically when you close.")
+        # Add save button at the bottom
+        save_key = f"final_save_annotations_{filename}"
+        if st.button("💾 Save Annotations", key=save_key, type="primary", use_container_width=True):
+            # Save the temporary annotations to permanent storage
+            if current_filepath in st.session_state.temp_annotations:
+                # Make sure image_annotations is initialized
+                if 'image_annotations' not in st.session_state:
+                    st.session_state.image_annotations = {}
+                
+                # Copy from temp to permanent storage
+                st.session_state.image_annotations[current_filepath] = st.session_state.temp_annotations[current_filepath].copy()
+                
+                # Save to disk
+                save_all_annotations(force_save=True)
+                
+                # Show success message
+                st.success(f"Annotations for {filename} saved successfully!")
+                st.toast(f"Annotations saved for {filename}", icon="✅")
+            else:
+                st.warning("No annotations to save")
+        
+        # Add a note about the Save button behavior
+        st.caption("Note: Click the Save button to save your annotations, then click outside to close the panel.")
 
 
 # This function has been replaced with display_annotation_button
@@ -302,20 +317,32 @@ def display_raw_annotation_data(station_name, instrument_id, year, day):
         st.warning("Scan info not available. Please scan for images first.")
 
 
-def create_default_annotations(current_filepath):
+def create_default_annotations(current_filepath, use_temp_storage=False):
     """
     Create default annotations for an image marked as "not needed".
     
     Args:
         current_filepath (str): Path to the current image
+        use_temp_storage (bool): Whether to use temporary storage instead of permanent
+        
+    Returns:
+        list: The created annotation data
     """
     if not current_filepath:
-        return
+        return None
     
-    # Make sure image_annotations is initialized
-    if 'image_annotations' not in st.session_state:
-        print("WARNING: image_annotations not in session state, initializing it now")
-        st.session_state.image_annotations = {}
+    # Choose the appropriate storage
+    if use_temp_storage:
+        # Initialize temp_annotations if needed
+        if 'temp_annotations' not in st.session_state:
+            st.session_state.temp_annotations = {}
+        annotations_storage = st.session_state.temp_annotations
+    else:
+        # Make sure image_annotations is initialized
+        if 'image_annotations' not in st.session_state:
+            print("WARNING: image_annotations not in session state, initializing it now")
+            st.session_state.image_annotations = {}
+        annotations_storage = st.session_state.image_annotations
     
     # Get ROI names
     roi_names = []
@@ -356,10 +383,13 @@ def create_default_annotations(current_filepath):
             "not_needed": True,  # Separate field for not needed status
         })
     
-    # Store in session state
-    st.session_state.image_annotations[current_filepath] = annotation_data
+    # Store in appropriate session state
+    annotations_storage[current_filepath] = annotation_data
     
-    print(f"Created default 'not needed' annotations for {os.path.basename(current_filepath)}")
+    print(f"Created default 'not needed' annotations for {os.path.basename(current_filepath)}" + 
+          f" in {'temporary' if use_temp_storage else 'permanent'} storage")
+    
+    return annotation_data
 
 
 # This function has been merged into display_annotation_panel
@@ -461,12 +491,13 @@ def create_annotation_summary(current_filepath):
         "metrics": metrics
     }
 
-def _create_annotation_interface(current_filepath):
+def _create_annotation_interface(current_filepath, use_temp_storage=False):
     """
     Internal function to create the ROI annotation interface.
     
     Args:
         current_filepath (str): Path to the current image
+        use_temp_storage (bool): Whether to use temporary storage instead of permanent
     """
     if not current_filepath:
         print("Cannot create annotation interface - no current filepath")
@@ -474,6 +505,21 @@ def _create_annotation_interface(current_filepath):
         
     # Create a unique key for this image
     image_key = current_filepath
+    
+    # Choose the appropriate storage
+    if use_temp_storage:
+        # Initialize temp_annotations if needed
+        if 'temp_annotations' not in st.session_state:
+            st.session_state.temp_annotations = {}
+        annotations_storage = st.session_state.temp_annotations
+        storage_name = "temporary"
+    else:
+        # Initialize image_annotations if needed
+        if 'image_annotations' not in st.session_state:
+            print("WARNING: image_annotations not in session state in _create_annotation_interface, initializing it now")
+            st.session_state.image_annotations = {}
+        annotations_storage = st.session_state.image_annotations
+        storage_name = "permanent"
     
     # Get list of ROI names from loaded ROIs
     roi_names = []
@@ -505,13 +551,8 @@ def _create_annotation_interface(current_filepath):
     # Get the formatted flag options for UI display
     flag_options = flags_processor.get_flag_options()
 
-    # Initialize annotations dictionary if not exists - This is a CRITICAL initialization point
-    if 'image_annotations' not in st.session_state:
-        print("WARNING: image_annotations not in session state in _create_annotation_interface, initializing it now")
-        st.session_state.image_annotations = {}
-
     # Create or retrieve annotations for current image
-    if image_key not in st.session_state.image_annotations:
+    if image_key not in annotations_storage:
         # Create default annotations for this image
         annotation_data = [
             {
@@ -534,13 +575,13 @@ def _create_annotation_interface(current_filepath):
             })
             
         # Debug message for new annotations
-        print(f"Created new default annotations for {os.path.basename(image_key)}")
+        print(f"Created new default annotations for {os.path.basename(image_key)} in {storage_name} storage")
         print(f"Default annotation data: {annotation_data}")
         print(f"ROI names used: {roi_names}")
     else:
         # Use existing annotations
-        annotation_data = st.session_state.image_annotations[image_key]
-        print(f"Loaded existing annotations for {os.path.basename(image_key)}")
+        annotation_data = annotations_storage[image_key]
+        print(f"Loaded existing annotations for {os.path.basename(image_key)} from {storage_name} storage")
         print(f"Existing annotation data: {annotation_data}")
         print(f"ROI names that should be available: {roi_names}")
         
@@ -574,7 +615,8 @@ def _create_annotation_interface(current_filepath):
         roi00_data = next((data for data in annotation_data if data["roi_name"] == "ROI_00"), None)
         if roi00_data:
             # Create a button to copy ROI_00 settings to all other ROIs
-            if st.button("📋 Copy ROI_00 Settings to All ROIs", use_container_width=True):
+            copy_key = f"copy_roi00_{os.path.basename(current_filepath)}"
+            if st.button("📋 Copy ROI_00 Settings to All ROIs", key=copy_key, use_container_width=True):
                 # Apply ROI_00 settings to all other ROIs
                 for i, data in enumerate(annotation_data):
                     if data["roi_name"] != "ROI_00":
@@ -586,8 +628,8 @@ def _create_annotation_interface(current_filepath):
                 # Show success message
                 st.success(f"Applied ROI_00 settings to all {len(all_roi_names)-1} ROIs")
                 
-                # Force save
-                st.session_state.image_annotations[image_key] = annotation_data
+                # Update the storage 
+                annotations_storage[image_key] = annotation_data
                 
                 # Rerun to update UI
                 st.rerun()
@@ -605,7 +647,7 @@ def _create_annotation_interface(current_filepath):
             roi_data = annotation_data[idx]
             
             # Create a unique key based on roi_name and image_key
-            roi_key = f"{roi_name}_{os.path.basename(image_key)}_popup"
+            roi_key = f"{roi_name}_{os.path.basename(image_key)}_popup_{storage_name}"
             
             # Layout for the annotation controls - avoid nesting columns by putting all controls in a single area
             # Create checkbox for discard
@@ -676,20 +718,11 @@ def _create_annotation_interface(current_filepath):
             # Fallback to original data if not updated
             updated_annotations.append(annotation_data[idx])
     
-    # Save the updated annotations to session state
-    st.session_state.image_annotations[image_key] = updated_annotations
+    # Save the updated annotations to the appropriate storage
+    annotations_storage[image_key] = updated_annotations
     
-    # Save button - changes are automatically saved when the popover is closed
-    filename = os.path.basename(current_filepath)
-    unique_button_key = f"save_annotations_{filename}"
-    
-    if st.button(f"💾 Save Annotations", 
-                type="primary", 
-                use_container_width=True,
-                key=unique_button_key):
-        # Save annotations immediately
-        save_all_annotations(force_save=True)
-        st.success(f"Annotations for {filename} saved successfully!")
+    # Return the updated annotations
+    return updated_annotations
 
 
 def display_annotation_completion_status(selected_day):
