@@ -266,11 +266,38 @@ def main():
                     selected_day
                 )
                 
-                # Always attempt to load annotations
-                load_day_annotations(selected_day, daily_filepaths)
+                # Create a loading key that's specific to this day
+                day_load_key = f"annotations_loaded_day_{selected_day}"
                 
-                # Mark as loaded
-                st.session_state[annotations_loaded_key] = True
+                # Check if we need to reload annotations (either not loaded or force reload)
+                if not st.session_state.get(day_load_key, False) or not st.session_state.get(annotations_loaded_key, False):
+                    print(f"Loading annotations for day {selected_day} - this is {'not' if not st.session_state.get(day_load_key, False) else ''} loaded by day key")
+                    print(f"Loading annotations for day {selected_day} - this is {'not' if not st.session_state.get(annotations_loaded_key, False) else ''} loaded by general key")
+                    
+                    # Clear any existing annotations for this day to avoid stale data
+                    if 'image_annotations' in st.session_state:
+                        filepaths_to_clear = []
+                        for filepath in st.session_state.image_annotations:
+                            img_dir = os.path.dirname(filepath)
+                            img_doy = os.path.basename(img_dir)
+                            if img_doy == selected_day:
+                                filepaths_to_clear.append(filepath)
+                        
+                        for filepath in filepaths_to_clear:
+                            if filepath in st.session_state.image_annotations:
+                                del st.session_state.image_annotations[filepath]
+                    
+                    # Attempt to load annotations
+                    load_successful = load_day_annotations(selected_day, daily_filepaths)
+                    
+                    # Mark as loaded in both places if successful
+                    if load_successful:
+                        st.session_state[annotations_loaded_key] = True
+                        st.session_state[day_load_key] = True
+                    else:
+                        print(f"WARNING: Failed to load annotations for day {selected_day}")
+                else:
+                    print(f"Skipping annotation load for day {selected_day} - already loaded")
                 
                 # Mark this day as in_progress in the annotation status cache
                 try:

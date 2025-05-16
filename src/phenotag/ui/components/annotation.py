@@ -29,6 +29,7 @@ def display_annotation_panel(current_filepath):
         current_filepath (str): Path to the current image
     """
     if not current_filepath:
+        print("Cannot display annotation panel - no current filepath")
         return
         
     # Get annotation timer to track activity
@@ -40,10 +41,48 @@ def display_annotation_panel(current_filepath):
     # Create a unique key for this image
     image_key = current_filepath
     
+    # Debug log for troubleshooting
+    print(f"Displaying annotation panel for image: {os.path.basename(current_filepath)}")
+    
     # Check if we have any annotations for this image
     has_annotations = False
     if 'image_annotations' in st.session_state and image_key in st.session_state.image_annotations:
         has_annotations = True
+        annotation_count = len(st.session_state.image_annotations[image_key])
+        print(f"Found existing annotations with {annotation_count} ROI entries")
+    else:
+        print("No annotations found for this image in session state")
+        
+        # Check if we should force a day reload
+        img_dir = os.path.dirname(current_filepath)
+        current_day = os.path.basename(img_dir)
+        day_load_key = f"annotations_loaded_day_{current_day}"
+        
+        # If annotations should be loaded but aren't, try to reload
+        annotations_file = os.path.join(img_dir, f"annotations_{current_day}.yaml")
+        if os.path.exists(annotations_file) and not st.session_state.get(day_load_key, False):
+            print(f"Annotations file exists but not loaded in memory. Will try to reload.")
+            # Get file paths for this day
+            from phenotag.ui.components.image_display import get_filtered_file_paths
+            selected_station = st.session_state.selected_station if 'selected_station' in st.session_state else None
+            selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None
+            selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
+            
+            daily_filepaths = get_filtered_file_paths(
+                selected_station,
+                selected_instrument,
+                selected_year,
+                current_day
+            )
+            
+            # Try to reload
+            load_day_annotations(current_day, daily_filepaths)
+            
+            # Check again if we have annotations
+            if image_key in st.session_state.image_annotations:
+                has_annotations = True
+                annotation_count = len(st.session_state.image_annotations[image_key])
+                print(f"After reload: Found annotations with {annotation_count} ROI entries")
     
     # Create a row for annotation status and buttons
     if has_annotations:
@@ -900,10 +939,32 @@ def load_day_annotations(selected_day, daily_filepaths):
         daily_filepaths (list): List of file paths for the selected day
     """
     if not daily_filepaths:
+        print(f"Warning: No daily_filepaths provided for day {selected_day}")
         return
         
     # Set loading flag to prevent concurrent saves while loading
     st.session_state.loading_annotations = True
+    
+    # Create a placeholder for the logging
+    print(f"===== LOADING ANNOTATIONS FOR DAY {selected_day} =====")
+    print(f"Found {len(daily_filepaths)} image files in the filesystem")
+    
+    # Create a key to track successful loading for this day
+    day_load_key = f"annotations_loaded_day_{selected_day}"
+    
+    # Track which images have annotations in memory before loading
+    existing_annotations_before = []
+    if 'image_annotations' in st.session_state:
+        for filepath in st.session_state.image_annotations:
+            img_dir = os.path.dirname(filepath)
+            img_doy = os.path.basename(img_dir)
+            if img_doy == selected_day:
+                existing_annotations_before.append(os.path.basename(filepath))
+    
+    if existing_annotations_before:
+        print(f"Before loading: Found {len(existing_annotations_before)} images with annotations in memory")
+    else:
+        print(f"Before loading: No images with annotations found in memory")
     
     # Create a placeholder for the loading indicator
     with st.spinner(f"Loading annotations for day {selected_day}..."):
@@ -913,26 +974,56 @@ def load_day_annotations(selected_day, daily_filepaths):
                 st.session_state.image_annotations = {}
                 
             # Get the directory where we expect to find the annotations file
-            img_dir = os.path.dirname(daily_filepaths[0])
-            annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
-            
+            if daily_filepaths:
+                img_dir = os.path.dirname(daily_filepaths[0])
+                annotations_file = os.path.join(img_dir, f"annotations_{selected_day}.yaml")
+                print(f"Looking for annotations file at: {annotations_file}")
+            else:
+                print(f"ERROR: daily_filepaths is empty, cannot determine annotations file path")
+                annotations_file = None
+                
             # Import the annotation timer
             from phenotag.ui.components.annotation_timer import annotation_timer
             
             # Start the timer for this day
             annotation_timer.start_timer(selected_day)
             
-            # We'll now always load annotations from disk to ensure we have the latest data
-            # This is important when switching between tabs or when annotations are modified
-            print(f"Attempting to load annotations for day {selected_day} from disk")
+            # Force clear annotations for this day first to avoid stale data
+            print(f"Clearing existing annotations for day {selected_day}")
+            day_filepaths_to_clear = []
+            for filepath in st.session_state.image_annotations:
+                img_dir = os.path.dirname(filepath)
+                img_doy = os.path.basename(img_dir)
+                if img_doy == selected_day:
+                    day_filepaths_to_clear.append(filepath)
+            
+            for filepath in day_filepaths_to_clear:
+                if filepath in st.session_state.image_annotations:
+                    del st.session_state.image_annotations[filepath]
+                    print(f"Cleared annotations for {os.path.basename(filepath)}")
+            
+            print(f"Cleared annotations for {len(day_filepaths_to_clear)} images")
 
             # If annotations file exists, load it
-            if os.path.exists(annotations_file):
+            if annotations_file and os.path.exists(annotations_file):
                 print(f"Loading annotations from file: {annotations_file}")
-                with open(annotations_file, 'r') as f:
-                    import yaml
-                    annotation_data = yaml.safe_load(f)
+                try:
+                    with open(annotations_file, 'r') as f:
+                        import yaml
+                        annotation_data = yaml.safe_load(f)
                     
+                    # Get file stats for logging
+                    import os
+                    file_size = os.path.getsize(annotations_file)
+                    print(f"Annotations file size: {file_size} bytes")
+                    
+                    # Log the structure of the file for debugging
+                    print(f"Annotations file structure keys: {list(annotation_data.keys())}")
+                    if 'annotations' in annotation_data:
+                        print(f"File contains annotations for {len(annotation_data['annotations'])} images")
+                    else:
+                        print(f"WARNING: No 'annotations' key found in the file!")
+                        
                     # Load previous annotation time if available
                     if 'annotation_time_minutes' in annotation_data:
                         previous_time = annotation_data['annotation_time_minutes']
@@ -947,114 +1038,134 @@ def load_day_annotations(selected_day, daily_filepaths):
                         else:
                             print(f"Already have accumulated time: {current_accumulated:.2f} minutes. Not setting to previous: {previous_time:.2f}")
 
-                    # Clear existing annotations for files in this day
-                    # (to avoid mixing with annotations from other days)
-                    for filepath in daily_filepaths:
-                        if filepath in st.session_state.image_annotations:
-                            del st.session_state.image_annotations[filepath]
-
                     if 'annotations' in annotation_data:
                         # Convert the loaded annotations to our format
                         loaded_count = 0
-                        for img_name, img_annotations in annotation_data['annotations'].items():
-                            # Find the full path for this filename
-                            for filepath in daily_filepaths:
-                                if os.path.basename(filepath) == img_name:
-                                    # Store annotations using full path as key 
-                                    # Make sure img_annotations is in the expected format
-                                    if isinstance(img_annotations, list):
-                                        # This is the correct format - a list of dictionaries, one per ROI
-                                        processed_annotations = []
-                                        
-                                        # Process each annotation to ensure it has all expected fields
-                                        for anno in img_annotations:
-                                            # Normalize annotation format
-                                            processed_anno = anno.copy()
-                                            
-                                            # Ensure we have all required fields with proper types
-                                            if 'roi_name' not in processed_anno:
-                                                processed_anno['roi_name'] = "ROI_00"
-                                            if 'discard' not in processed_anno:
-                                                processed_anno['discard'] = False
-                                            if 'snow_presence' not in processed_anno:
-                                                processed_anno['snow_presence'] = False
-                                            if 'flags' not in processed_anno or processed_anno['flags'] is None:
-                                                processed_anno['flags'] = []
-                                            
-                                            # Handle the not_needed field
-                                            if 'not_needed' not in processed_anno:
-                                                # Check if the "not_needed" flag is in the flags list
-                                                if 'flags' in processed_anno and "not_needed" in processed_anno['flags']:
-                                                    # Remove it from flags and set the dedicated field
-                                                    processed_anno['flags'].remove("not_needed")
-                                                    processed_anno['not_needed'] = True
-                                                else:
-                                                    processed_anno['not_needed'] = False
-                                            
-                                            # Make sure flags is a list of strings
-                                            processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
-                                            
-                                            # Add to processed list
-                                            processed_annotations.append(processed_anno)
-                                        
-                                        # After processing, store the annotations
-                                        st.session_state.image_annotations[filepath] = processed_annotations
-                                        
-                                        loaded_count += 1
-                                        print(f"Loaded annotations for image: {img_name} - {len(processed_annotations)} ROIs")
-                                        break
-                                    
-                            # If we didn't find a match, try to convert the format if needed
-                            try:
-                                converted_annotations = []
-                                if isinstance(img_annotations, dict):
-                                    # If it's a dict of ROIs, convert to list
-                                    for roi_name, roi_data in img_annotations.items():
-                                        if isinstance(roi_data, dict):
-                                            # Make sure roi_name is in the dict
-                                            processed_anno = roi_data.copy()
-                                            processed_anno['roi_name'] = roi_name
-                                            
-                                            # Normalize fields
-                                            if 'discard' not in processed_anno:
-                                                processed_anno['discard'] = False
-                                            if 'snow_presence' not in processed_anno:
-                                                processed_anno['snow_presence'] = False
-                                            if 'flags' not in processed_anno or processed_anno['flags'] is None:
-                                                processed_anno['flags'] = []
-                                                
-                                            # Handle the not_needed field
-                                            if 'not_needed' not in processed_anno:
-                                                # Check if the "not_needed" flag is in the flags list
-                                                if 'flags' in processed_anno and "not_needed" in processed_anno['flags']:
-                                                    # Remove it from flags and set the dedicated field
-                                                    processed_anno['flags'].remove("not_needed")
-                                                    processed_anno['not_needed'] = True
-                                                else:
-                                                    processed_anno['not_needed'] = False
-                                                
-                                            # Make sure flags is a list of strings
-                                            processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
-                                            
-                                            converted_annotations.append(processed_anno)
-                                        else:
-                                            print(f"Warning: Unexpected ROI data format for {roi_name}: {type(roi_data)}")
-                                    
-                                    if converted_annotations:
-                                        for filepath in daily_filepaths:
-                                            if os.path.basename(filepath) == img_name:
-                                                st.session_state.image_annotations[filepath] = converted_annotations
-                                                
-                                                loaded_count += 1
-                                                print(f"Converted and loaded annotations for image: {img_name} - {len(converted_annotations)} ROIs")
-                                                break
-                            except Exception as conv_error:
-                                print(f"Error converting annotations for {img_name}: {str(conv_error)}")
+                        loaded_filenames = []
                         
-                        print(f"Loaded annotations for {loaded_count} images from {annotations_file}")
+                        # Log the image names in the file vs filesystem for debugging
+                        annotation_image_names = list(annotation_data['annotations'].keys())
+                        filesystem_image_names = [os.path.basename(path) for path in daily_filepaths]
+                        print(f"Images in annotation file: {annotation_image_names}")
+                        print(f"Images in filesystem: {filesystem_image_names}")
+                        
+                        # Map between image names in annotations file and filepaths
+                        name_to_path_map = {}
+                        for filepath in daily_filepaths:
+                            name_to_path_map[os.path.basename(filepath)] = filepath
+                        
+                        for img_name, img_annotations in annotation_data['annotations'].items():
+                            # First look in our map for faster matching
+                            if img_name in name_to_path_map:
+                                filepath = name_to_path_map[img_name]
+                                
+                                # Process the annotations
+                                if isinstance(img_annotations, list):
+                                    # This is the correct format - a list of dictionaries, one per ROI
+                                    processed_annotations = []
+                                    
+                                    # Process each annotation to ensure it has all expected fields
+                                    for anno in img_annotations:
+                                        # Normalize annotation format
+                                        processed_anno = anno.copy()
+                                        
+                                        # Ensure we have all required fields with proper types
+                                        if 'roi_name' not in processed_anno:
+                                            processed_anno['roi_name'] = "ROI_00"
+                                        if 'discard' not in processed_anno:
+                                            processed_anno['discard'] = False
+                                        if 'snow_presence' not in processed_anno:
+                                            processed_anno['snow_presence'] = False
+                                        if 'flags' not in processed_anno or processed_anno['flags'] is None:
+                                            processed_anno['flags'] = []
+                                        
+                                        # Handle the not_needed field
+                                        if 'not_needed' not in processed_anno:
+                                            # Check if the "not_needed" flag is in the flags list
+                                            if 'flags' in processed_anno and "not_needed" in processed_anno['flags']:
+                                                # Remove it from flags and set the dedicated field
+                                                processed_anno['flags'].remove("not_needed")
+                                                processed_anno['not_needed'] = True
+                                            else:
+                                                processed_anno['not_needed'] = False
+                                        
+                                        # Make sure flags is a list of strings
+                                        processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
+                                        
+                                        # Add to processed list
+                                        processed_annotations.append(processed_anno)
+                                    
+                                    # After processing, store the annotations
+                                    st.session_state.image_annotations[filepath] = processed_annotations
+                                    
+                                    loaded_count += 1
+                                    loaded_filenames.append(img_name)
+                                    print(f"Loaded annotations for image: {img_name} - {len(processed_annotations)} ROIs")
+                                
+                                elif isinstance(img_annotations, dict):
+                                    # Try to convert dict format to list format
+                                    try:
+                                        converted_annotations = []
+                                        for roi_name, roi_data in img_annotations.items():
+                                            if isinstance(roi_data, dict):
+                                                # Make sure roi_name is in the dict
+                                                processed_anno = roi_data.copy()
+                                                processed_anno['roi_name'] = roi_name
+                                                
+                                                # Normalize fields
+                                                if 'discard' not in processed_anno:
+                                                    processed_anno['discard'] = False
+                                                if 'snow_presence' not in processed_anno:
+                                                    processed_anno['snow_presence'] = False
+                                                if 'flags' not in processed_anno or processed_anno['flags'] is None:
+                                                    processed_anno['flags'] = []
+                                                    
+                                                # Handle the not_needed field
+                                                if 'not_needed' not in processed_anno:
+                                                    # Check if the "not_needed" flag is in the flags list
+                                                    if 'flags' in processed_anno and "not_needed" in processed_anno['flags']:
+                                                        # Remove it from flags and set the dedicated field
+                                                        processed_anno['flags'].remove("not_needed")
+                                                        processed_anno['not_needed'] = True
+                                                    else:
+                                                        processed_anno['not_needed'] = False
+                                                    
+                                                # Make sure flags is a list of strings
+                                                processed_anno['flags'] = [str(flag) for flag in processed_anno['flags']]
+                                                
+                                                converted_annotations.append(processed_anno)
+                                            else:
+                                                print(f"Warning: Unexpected ROI data format for {roi_name}: {type(roi_data)}")
+                                        
+                                        if converted_annotations:
+                                            # Store the annotations
+                                            st.session_state.image_annotations[filepath] = converted_annotations
+                                            
+                                            loaded_count += 1
+                                            loaded_filenames.append(img_name)
+                                            print(f"Converted and loaded annotations for image: {img_name} - {len(converted_annotations)} ROIs")
+                                    except Exception as conv_error:
+                                        print(f"Error converting annotations for {img_name}: {str(conv_error)}")
+                                else:
+                                    print(f"Warning: Unexpected annotation format for {img_name}: {type(img_annotations)}")
+                            else:
+                                # Fallback to slower search if the map doesn't have it
+                                print(f"Image {img_name} not found in name_to_path_map, using slower search")
+                                found = False
+                                for filepath in daily_filepaths:
+                                    if os.path.basename(filepath) == img_name:
+                                        # Process similar to above
+                                        found = True
+                                        break
+                                
+                                if not found:
+                                    print(f"Warning: Could not find filepath for {img_name}")
+                        
+                        print(f"Successfully loaded annotations for {loaded_count} images: {', '.join(loaded_filenames)}")
                         
                         # Set a flag to indicate annotations were loaded
                         st.session_state.annotations_just_loaded = True
+                        st.session_state[day_load_key] = True
                         
                         # Analyze and display annotation completion status
                         if 'expected_image_count' in annotation_data and 'annotated_image_count' in annotation_data:
@@ -1077,11 +1188,39 @@ def load_day_annotations(selected_day, daily_filepaths):
                         else:
                             # Just show basic notification for older annotation files
                             st.success(f"Loaded annotations for day {selected_day}", icon="✅")
+                except Exception as file_error:
+                    print(f"Error loading annotations file: {str(file_error)}")
+                    st.error(f"Error loading annotations file: {str(file_error)}")
             else:
                 print(f"No annotations file found for day {selected_day} at {annotations_file}")
+                st.session_state[day_load_key] = False
+            
+            # Final check to make sure annotations were properly loaded
+            annotations_after_loading = []
+            if 'image_annotations' in st.session_state:
+                for filepath in st.session_state.image_annotations:
+                    img_dir = os.path.dirname(filepath)
+                    img_doy = os.path.basename(img_dir)
+                    if img_doy == selected_day:
+                        annotations_after_loading.append(os.path.basename(filepath))
+            
+            print(f"After loading: Found {len(annotations_after_loading)} images with annotations in memory")
+            print(f"Annotations loaded: {', '.join(annotations_after_loading)}")
+            
+            # Force reload if we didn't load any annotations but we know the file exists
+            if not annotations_after_loading and annotations_file and os.path.exists(annotations_file):
+                print("WARNING: No annotations loaded despite file existing. Will need manual intervention.")
+                st.warning(f"Failed to load annotations for day {selected_day} despite file existing. Please try switching to another day and back.")
         except Exception as e:
-            print(f"Error loading annotations for day change: {e}")
-            st.error(f"Error loading annotations: {e}")
+            print(f"Critical error loading annotations: {str(e)}")
+            st.error(f"Error loading annotations: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            st.session_state[day_load_key] = False
         finally:
             # Always clear the loading flag
             st.session_state.loading_annotations = False
+            print(f"===== COMPLETED LOADING ANNOTATIONS FOR DAY {selected_day} =====")
+    
+    # Return success status
+    return st.session_state.get(day_load_key, False)
