@@ -664,16 +664,30 @@ def save_all_annotations(force_save=False):
                         selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None
                         selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
                         
+                        # Only get files for the current day that's being saved
                         all_files = get_filtered_file_paths(
                             selected_station,
                             selected_instrument,
                             selected_year,
-                            doy
+                            doy  # This ensures we only count files for the current day
                         )
                         
-                        # Count how many images have annotations
-                        annotated_count = len(day_annotations)
-                        expected_count = len(all_files)
+                        # Count how many images have annotations for this specific day
+                        # Make sure we're only counting annotations for this day
+                        day_specific_annotations = {}
+                        for img_path, img_anno in st.session_state.image_annotations.items():
+                            # Only count images from this specific day
+                            img_dir = os.path.dirname(img_path)
+                            img_doy = os.path.basename(img_dir)
+                            if img_doy == doy:
+                                filename = os.path.basename(img_path)
+                                day_specific_annotations[filename] = img_anno
+                        
+                        # Now count the real annotations for this day only
+                        annotated_count = len(day_annotations)  # This counts files in the day_annotations object
+                        expected_count = len(all_files)         # This counts files found in the file system
+                        
+                        print(f"Day {doy}: Found {annotated_count} annotations and {expected_count} expected images")
                         
                         # Determine the completion status of each annotated file
                         file_status = {}
@@ -750,11 +764,14 @@ def save_all_annotations(force_save=False):
                                 day_filepaths = []
                                 
                                 # Get all filepaths for this day
+                                day_filepaths = []
                                 for img_path in st.session_state.image_annotations:
                                     img_dir = os.path.dirname(img_path)
                                     img_doy = os.path.basename(img_dir)
                                     if img_doy == doy:
                                         day_filepaths.append(img_path)
+                                
+                                print(f"Found {len(day_filepaths)} annotated images in memory for day {doy}")
                                 
                                 # Check if we have all images for this day
                                 from phenotag.ui.components.image_display import get_filtered_file_paths
@@ -764,6 +781,7 @@ def save_all_annotations(force_save=False):
                                     current_year,
                                     doy
                                 )
+                                print(f"Found {len(all_day_filepaths)} expected images in filesystem for day {doy}")
                                 
                                 # FIRST check if all images exist in annotations
                                 if len(day_filepaths) < len(all_day_filepaths):
