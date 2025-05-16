@@ -88,12 +88,11 @@ def render_sidebar():
         # Store the old station for later check
         old_station = st.session_state.selected_station
 
-        # If station is changing, save current annotations and reset
+        # If station is changing, reset annotations without auto-saving
         if station_changed and 'image_annotations' in st.session_state:
-            # Save annotations first to avoid losing data
+            # No auto-save when changing station
             if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
-                from phenotag.ui.components.annotation import save_all_annotations
-                save_all_annotations(force_save=True)
+                print("No auto-save when changing station")
                 
             # Pause the annotation timer when changing station
             if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
@@ -150,12 +149,11 @@ def render_sidebar():
                 # Store the old instrument for later check
                 old_instrument = st.session_state.selected_instrument
                 
-                # If instrument is changing, save current annotations and reset
+                # If instrument is changing, reset annotations without auto-saving
                 if instrument_changed and 'image_annotations' in st.session_state:
-                    # Save annotations first to avoid losing data
+                    # No auto-save when changing instrument
                     if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
-                        from phenotag.ui.components.annotation import save_all_annotations
-                        save_all_annotations(force_save=True)
+                        print("No auto-save when changing instrument")
                         
                     # Pause the annotation timer when changing instrument
                     if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
@@ -258,7 +256,7 @@ def render_sidebar():
                 # Reset the notification flag when directory changes
                 if hasattr(st.session_state, 'ready_notified'):
                     st.session_state.ready_notified = False
-                # Auto-save when data directory changes
+                # Save session config when data directory changes (app settings, not annotations)
                 save_session_config()
             
             # Session management buttons with improved layout

@@ -37,7 +37,7 @@ def handle_scan(normalized_name, selected_instrument):
         
         # Display appropriate heading based on scan type
         if is_auto_scan:
-            st.subheader("Auto-scanning based on saved configuration...")
+            st.subheader("Loading images from saved configuration...")
         else:
             st.subheader("Scanning for images...")
         
@@ -173,7 +173,7 @@ def handle_scan(normalized_name, selected_instrument):
                     if days:
                         st.session_state.selected_day = days[0]
 
-            # Auto-save the session
+            # Save session config (UI state and settings, not annotations)
             save_session_config()
             
             # Show success message

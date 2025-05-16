@@ -13,6 +13,7 @@ from pathlib import Path
 def check_day_annotation_status(base_dir, station_name, instrument_id, year, day):
     """
     Check the annotation status for a specific day.
+    Supports both per-image annotation files and legacy day-level annotation files.
     
     Args:
         base_dir (str): Base directory for data
@@ -62,25 +63,66 @@ def check_day_annotation_status(base_dir, station_name, instrument_id, year, day
         str(day)
     )
     
-    annotations_file = os.path.join(day_dir, f"annotations_{day}.yaml")
-    
     # Check if currently being annotated (highest priority)
     if 'annotation_timer_current_day' in st.session_state and st.session_state.annotation_timer_current_day == day:
         return 'in_progress'
     
-    # Check if file exists
-    if os.path.exists(annotations_file):
+    # First check the new day status file format
+    day_status_file = os.path.join(day_dir, f"day_status_{day}.yaml")
+    if os.path.exists(day_status_file):
+        try:
+            with open(day_status_file, 'r') as f:
+                status_data = yaml.safe_load(f)
+                
+            # Check if all images are annotated
+            if status_data and 'completion_percentage' in status_data:
+                # If 100% complete, mark as completed
+                if status_data['completion_percentage'] == 100:
+                    return 'completed'
+                # If some images are annotated but not all, mark as in progress
+                elif status_data['completion_percentage'] > 0:
+                    return 'in_progress'
+            
+            # Check individual file status
+            if status_data and 'file_status' in status_data:
+                file_statuses = status_data['file_status']
+                if file_statuses:
+                    # If any file is completed, it's at least in progress
+                    if any(status == 'completed' for status in file_statuses.values()):
+                        # If all files are completed, it's completed
+                        if all(status == 'completed' for status in file_statuses.values()):
+                            return 'completed'
+                        else:
+                            return 'in_progress'
+                    # If any file is in progress, it's in progress
+                    elif any(status == 'in_progress' for status in file_statuses.values()):
+                        return 'in_progress'
+        except Exception as e:
+            print(f"Error reading day status file: {e}")
+    
+    # Check for per-image annotation files
+    per_image_files = [f for f in os.listdir(day_dir) 
+                      if f.endswith('_annotations.yaml') and not f.startswith('day_status_')]
+    
+    if per_image_files:
+        # At least one per-image file exists, so it's at least in progress
+        return 'in_progress'
+    
+    # Check legacy day-level annotation file as last resort
+    legacy_annotations_file = os.path.join(day_dir, f"annotations_{day}.yaml")
+    if os.path.exists(legacy_annotations_file):
         try:
             # Verify contents to make sure it's complete
-            with open(annotations_file, 'r') as f:
+            with open(legacy_annotations_file, 'r') as f:
                 data = yaml.safe_load(f)
                 # Check if it has annotations
                 if data and 'annotations' in data and data['annotations']:
                     return 'completed'
-        except:
-            # If we can't read the file or it's empty, consider it not annotated
+        except Exception as e:
+            print(f"Error reading legacy annotation file: {e}")
             return 'not_annotated'
     
+    # No annotation files found
     return 'not_annotated'
 
 

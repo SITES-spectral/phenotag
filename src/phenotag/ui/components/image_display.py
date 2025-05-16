@@ -133,11 +133,23 @@ def display_image_list(daily_filepaths):
             label_visibility="collapsed"
         )
         
-        # Update session state with the selected index
+        # Update session state with the selected index and trigger rerun if changed
         if selected_index is not None:
-            # Always update session state to ensure it persists
-            st.session_state.selected_image_index = selected_index
-            print(f"Updated selected_image_index to {selected_index}")
+            # Check if the index changed
+            if st.session_state.get('selected_image_index') != selected_index:
+                # Update the session state
+                st.session_state.selected_image_index = selected_index
+                print(f"Updated selected_image_index to {selected_index}")
+                
+                # Set current_filepath based on the new selection
+                if 0 <= selected_index < len(daily_filepaths):
+                    st.session_state.current_filepath = daily_filepaths[selected_index]
+                    
+                # Force a rerun to update the UI and annotation panel
+                st.rerun()
+            else:
+                # No change, just ensure session state is updated
+                st.session_state.selected_image_index = selected_index
             
         # Create a selection event that mimics the dataframe selection event
         if selected_index is not None:
@@ -454,7 +466,7 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
             if years:
                 selected_year = years[0]
                 st.session_state.selected_year = selected_year
-                # Auto-save this change
+                # Save this selection to session config - not an annotation auto-save
                 from phenotag.ui.components.session_state import save_session_config
                 save_session_config()
 
@@ -554,9 +566,11 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                         st.markdown("---")
                         from phenotag.ui.components.annotation import display_annotation_button
                         
-                        # Create a key using just the filename - filenames are already unique
+                        # Create a key using just the filename and the current timestamp to force refresh
                         filename = os.path.basename(st.session_state.current_filepath)
-                        refresh_key = f"annotation_button_{filename}"
+                        # Add selected_image_index to the key to ensure it refreshes when selection changes
+                        selected_idx = st.session_state.get('selected_image_index', 0)
+                        refresh_key = f"annotation_button_{filename}_{selected_idx}"
                         
                         # Display the annotation button with the unique key to ensure it refreshes
                         with st.container(key=refresh_key):

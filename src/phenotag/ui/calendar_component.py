@@ -367,11 +367,9 @@ def create_calendar(year: int, month: int, image_data: Dict, on_select=None):
                         
                         if st.button(button_text, key=f"day_{year}_{month}_{doy}", 
                                      type=button_type, disabled=disabled):
-                            # Save annotations before changing day
+                            # No auto-save when changing day
                             if 'image_annotations' in st.session_state and st.session_state.image_annotations:
-                                from phenotag.ui.components.annotation import save_all_annotations
-                                save_all_annotations(force_save=True)
-                                print(f"Saved annotations when changing day to {doy}")
+                                print(f"No auto-save when changing day to {doy}")
                             
                             # Set this day as the selected day (single selection)
                             st.session_state.selected_day = str(doy)
@@ -401,11 +399,9 @@ def create_calendar(year: int, month: int, image_data: Dict, on_select=None):
     
     # Add a clear selection button
     if st.button("Clear Selection", key=f"clear_{year}_{month}"):
-        # Save annotations before clearing selection
+        # No auto-save when clearing selection
         if 'image_annotations' in st.session_state and st.session_state.image_annotations:
-            from phenotag.ui.components.annotation import save_all_annotations
-            save_all_annotations(force_save=True)
-            print("Saved annotations when clearing day selection")
+            print("No auto-save when clearing day selection")
             
         # Clear both single selection and multi-selection for backward compatibility
         st.session_state.selected_day = None

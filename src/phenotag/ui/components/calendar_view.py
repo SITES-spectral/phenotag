@@ -80,11 +80,9 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
         st.session_state.selected_days = []
         # Reset image_annotations to ensure we reload them for the new year
         if 'image_annotations' in st.session_state:
-            # Save the annotations first to avoid losing data
+            # No auto-save when changing year
             if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
-                from phenotag.ui.components.annotation import save_all_annotations
-                save_all_annotations()
-                print(f"Saved annotations when changing year to {selected_year}")
+                print(f"No auto-save when changing year to {selected_year}")
                 
             # Pause the annotation timer when changing years
             if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
@@ -98,7 +96,7 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
             if 'annotation_status_map' in st.session_state:
                 st.session_state.annotation_status_map = {}
                 print("Cleared annotation status cache due to year change")
-        # Auto-save when selection changes
+        # Save session config when selection changes (UI state, not annotations)
         save_session_config()
         # Trigger a rerun to update the UI
         st.rerun()
@@ -129,12 +127,10 @@ def render_year_month_selectors(normalized_name, selected_instrument, image_data
         # Reset selected day
         st.session_state.selected_day = None
         
-        # Clear annotations and save current ones when changing months
+        # Clear annotations without auto-saving when changing months
         if 'image_annotations' in st.session_state and st.session_state.image_annotations:
-            # Save the annotations first to avoid losing data
-            from phenotag.ui.components.annotation import save_all_annotations
-            save_all_annotations()
-            print(f"Saved annotations when changing month to {selected_month_idx}")
+            # No auto-save when changing month
+            print(f"No auto-save when changing month to {selected_month_idx}")
             # Clear annotations 
             st.session_state.image_annotations = {}
             
@@ -518,10 +514,9 @@ def display_calendar_view(normalized_name, selected_instrument):
             
     # If days changed, clear image annotations to ensure we load fresh annotations
     if day_changed and 'image_annotations' in st.session_state:
-        # Save existing annotations first to preserve data
+        # No auto-save when changing day selection
         if hasattr(st.session_state, 'image_annotations') and st.session_state.image_annotations:
-            from phenotag.ui.components.annotation import save_all_annotations
-            save_all_annotations()
+            print(f"No auto-save when changing day selection")
             
         # Pause the annotation timer when changing days
         if hasattr(st.session_state, 'annotation_timer_current_day') and st.session_state.annotation_timer_current_day:
