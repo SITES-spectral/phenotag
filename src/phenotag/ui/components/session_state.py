@@ -48,6 +48,10 @@ def initialize_session_state(session_config=None):
     # Initialize ROI toggle tracking flag
     if 'roi_toggle_changed' not in st.session_state:
         st.session_state.roi_toggle_changed = False
+        
+    # Initialize annotations storage
+    if 'image_annotations' not in st.session_state:
+        st.session_state.image_annotations = {}
 
 
 def save_session_config():
@@ -93,9 +97,9 @@ def reset_session():
     # Clear session state without using status container
     for key in ['data_directory', 'selected_station', 'selected_instrument',
                 'selected_year', 'selected_day', 'selected_days', 'selected_month',
-                'image_data', 'ready_notified']:
+                'image_data', 'image_annotations', 'ready_notified']:
         if key in st.session_state:
-            if key == 'image_data':
+            if key in ['image_data', 'image_annotations']:
                 st.session_state[key] = {}
             elif key == 'selected_days':
                 st.session_state[key] = []

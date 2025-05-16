@@ -77,12 +77,14 @@ def display_image_list(daily_filepaths):
             doys.append("Unknown")
 
     # Check annotation status for each file
+    # Make sure image_annotations is initialized
+    if 'image_annotations' not in st.session_state:
+        print("WARNING: image_annotations not in session state in display_image_list, initializing it now")
+        st.session_state.image_annotations = {}
+    
     annotation_status = []
     for filepath in daily_filepaths:
-        if 'image_annotations' in st.session_state:
-            annotation_status.append(filepath in st.session_state.image_annotations)
-        else:
-            annotation_status.append(False)
+        annotation_status.append(filepath in st.session_state.image_annotations)
     
     # Create a list of radio options with formatted display labels
     radio_options = []

@@ -11,16 +11,23 @@ This PR fixes persistent issues where annotations were not being loaded or displ
    - Added aggressive clearing of stale annotations before loading new ones
    - Created a fast filename-to-path lookup map for efficient matching
    - Added verification steps to confirm annotations were actually loaded
+   - Added proper initialization of `image_annotations` in multiple parts of the code
 
 2. **Self-Healing Annotation Panel**
    - Added detection of missing annotations that should exist
    - Implemented automatic reload if annotations file exists but isn't loaded in memory
+   - Added defensive checks and initialization for missing session state variables
    - Added detailed logging to track annotation loading/saving process
 
 3. **Accurate Image Counting**
    - Fixed the issue where saving showed the wrong number of images
    - Added day-specific filtering when counting images during save
    - Improved the logging of expected vs. actual image counts
+
+4. **Error Prevention**
+   - Fixed AttributeError about missing `image_annotations` variable
+   - Added proper initialization in session_state.py
+   - Added defensive fallback initialization throughout the code
 
 4. **Documentation Improvements**
    - Updated annotation documentation with critical implementation notes

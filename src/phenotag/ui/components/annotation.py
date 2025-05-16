@@ -44,9 +44,14 @@ def display_annotation_panel(current_filepath):
     # Debug log for troubleshooting
     print(f"Displaying annotation panel for image: {os.path.basename(current_filepath)}")
     
+    # Make sure image_annotations is initialized
+    if 'image_annotations' not in st.session_state:
+        print("WARNING: image_annotations not in session state, initializing it now")
+        st.session_state.image_annotations = {}
+    
     # Check if we have any annotations for this image
     has_annotations = False
-    if 'image_annotations' in st.session_state and image_key in st.session_state.image_annotations:
+    if image_key in st.session_state.image_annotations:
         has_annotations = True
         annotation_count = len(st.session_state.image_annotations[image_key])
         print(f"Found existing annotations with {annotation_count} ROI entries")
@@ -140,9 +145,14 @@ def create_default_annotations(current_filepath):
     Args:
         current_filepath (str): Path to the current image
     """
-    if not current_filepath or 'image_annotations' not in st.session_state:
+    if not current_filepath:
         return
-        
+    
+    # Make sure image_annotations is initialized
+    if 'image_annotations' not in st.session_state:
+        print("WARNING: image_annotations not in session state, initializing it now")
+        st.session_state.image_annotations = {}
+    
     # Get ROI names
     roi_names = []
     if 'instrument_rois' in st.session_state and st.session_state.instrument_rois:
@@ -201,8 +211,13 @@ def create_annotation_summary(current_filepath):
     Returns:
         dict: Summary data including dataframe and metrics
     """
-    if not current_filepath or 'image_annotations' not in st.session_state:
+    if not current_filepath:
         return None
+        
+    # Make sure image_annotations is initialized
+    if 'image_annotations' not in st.session_state:
+        print("WARNING: image_annotations not in session state, initializing it now")
+        st.session_state.image_annotations = {}
     
     # Create a unique key for this image
     image_key = current_filepath
@@ -289,6 +304,10 @@ def _create_annotation_interface(current_filepath):
     Args:
         current_filepath (str): Path to the current image
     """
+    if not current_filepath:
+        print("Cannot create annotation interface - no current filepath")
+        return
+        
     # Create a unique key for this image
     image_key = current_filepath
     
@@ -322,8 +341,9 @@ def _create_annotation_interface(current_filepath):
     # Get the formatted flag options for UI display
     flag_options = flags_processor.get_flag_options()
 
-    # Initialize annotations dictionary if not exists
+    # Initialize annotations dictionary if not exists - This is a CRITICAL initialization point
     if 'image_annotations' not in st.session_state:
+        print("WARNING: image_annotations not in session state in _create_annotation_interface, initializing it now")
         st.session_state.image_annotations = {}
 
     # Create or retrieve annotations for current image
@@ -590,7 +610,14 @@ def save_all_annotations(force_save=False):
     if st.session_state.get('loading_annotations', False):
         print("Skipping annotation save: currently loading annotations")
         return
-        
+    
+    # Make sure image_annotations is initialized
+    if 'image_annotations' not in st.session_state:
+        print("WARNING: image_annotations not in session state, initializing it now")
+        st.session_state.image_annotations = {}
+        # No need to proceed if there are no annotations
+        if not force_save:
+            return
     # Check if we should save based on auto-save settings
     auto_save_enabled = st.session_state.get('auto_save_enabled', True)
     immediate_save_enabled = st.session_state.get('immediate_save_enabled', True)

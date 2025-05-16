@@ -8,22 +8,26 @@ This document explains how annotation loading and saving works in PhenoTag, incl
 
 ### Key Implementation Patterns to Preserve
 
-1. **Day-specific annotation tracking** using keys like `annotations_loaded_day_{day}` must be maintained to ensure proper loading
-2. **Aggressive annotation clearing before loading** prevents stale data from appearing in the UI
-3. **Self-healing mechanisms** in the annotation panel will attempt to reload annotations if they exist but aren't loaded
-4. **Clear file path matching** ensures annotations are correctly associated with the right images
-5. **Comprehensive logging** helps identify issues quickly
-6. **ROI toggle state tracking** with `roi_toggle_changed` prevents unwanted saves when just toggling overlay display
+1. **Proper session state initialization** of the `image_annotations` variable in multiple locations to ensure it's always available
+2. **Day-specific annotation tracking** using keys like `annotations_loaded_day_{day}` must be maintained to ensure proper loading
+3. **Aggressive annotation clearing before loading** prevents stale data from appearing in the UI
+4. **Self-healing mechanisms** in the annotation panel will attempt to reload annotations if they exist but aren't loaded
+5. **Clear file path matching** ensures annotations are correctly associated with the right images
+6. **Comprehensive logging** helps identify issues quickly
+7. **ROI toggle state tracking** with `roi_toggle_changed` prevents unwanted saves when just toggling overlay display
 
 ### Common Issues and Solutions
 
 1. **Symptoms**: Annotations visible in calendar but not loading in the UI
    - **Solution**: The annotation panel now includes self-healing code that will attempt to reload from disk
 
-2. **Symptoms**: Wrong image count displayed when saving
+2. **Symptoms**: AttributeError: st.session_state has no attribute "image_annotations" 
+   - **Solution**: Multiple initialization points added throughout the code to ensure this variable always exists
+
+3. **Symptoms**: Wrong image count displayed when saving
    - **Solution**: Day-specific counting logic ensures accurate counts
 
-3. **Symptoms**: Toggling ROI overlays triggers unwanted saves
+4. **Symptoms**: Toggling ROI overlays triggers unwanted saves
    - **Solution**: Special flag tracks UI-only changes vs annotation changes
 
 ## Overview
