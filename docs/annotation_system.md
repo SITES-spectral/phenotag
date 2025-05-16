@@ -139,15 +139,13 @@ PhenoTag features an enhanced annotation tracking and saving system that include
    - Updates completion statistics during each save operation
    - Preserves annotation time tracking for reporting
 
-4. **Force Save on Context Changes**:
+4. **Self-Contained Saving**:
    - Annotations are automatically saved when:
-     - Changing days in the calendar
-     - Changing instruments
-     - Changing stations
-     - Changing years or months
-     - Scanning for new images
-     - Clearing day selection
-   - These saves occur to ensure data safety and update completion status
+     - Clicking the "Save Annotations" button in the popover
+     - Clicking outside the popover to close it
+     - Marking an image as "No annotation needed"
+   - No need for explicit saves when changing days, instruments, or stations
+   - Each annotation is managed within its own popover context
 
 5. **Progress Visualization**:
    - Shows progress bar for day completion
@@ -288,43 +286,52 @@ Additional ROIs (if defined in stations.yaml) will be added to this list with th
 
 ## Annotation Interface
 
-PhenoTag features a streamlined popup-based interface for ROI annotations:
+PhenoTag features a button-triggered popover interface for ROI annotations:
 
-1. **Annotation Panel**:
+1. **Annotation Button and Status**:
    - Located in the image selection sidebar
-   - Shows annotation status for the current image
-   - Provides a "No annotation needed" button for images that don't require annotation
-   - Features a popover that expands to show the full annotation interface
+   - Shows annotation status for the current image ("Annotated" or "Not annotated")
+   - Provides a button that says "Annotate" for non-annotated images or "Edit" for annotated ones
+   - Clicking the button opens the annotation panel popover
+   - Changes are automatically saved when closing the popover
 
-2. **ROI Tabs**:
+2. **Annotation Panel Popover**:
+   - Opens when the Annotate/Edit button is clicked
+   - Self-contained - handles loading, managing, and saving its own data
+   - Shows the filename being annotated for confirmation
+   - Contains the "No annotation needed" and "Reset All Annotations" buttons
+   - Automatically closes and saves when clicked outside
+   - Eliminates the need for explicit saves when changing days/stations/instruments
+
+3. **ROI Tabs**:
    - Each ROI has its own dedicated tab for focused annotation
    - Tabs are automatically generated based on available ROIs
    - Easy navigation between different ROIs
    - Clear context of which ROI is being annotated
 
-3. **Quality Flags Selection**:
+4. **Quality Flags Selection**:
    - Each ROI tab contains a multiselect widget for flag selection
    - Flags are organized by category for easier browsing
    - Flags display their category for better context
    - Selected flags are displayed with their categories
 
-4. **Copy ROI_00 Settings**:
+5. **Copy ROI_00 Settings**:
    - "Copy ROI_00 Settings to All ROIs" button applies settings from ROI_00 to all other ROIs
    - Copies discard status, snow presence, and quality flags
    - Useful for applying common settings across all regions
    - Individual ROIs can still be customized after copying
 
-5. **Reset Annotations**:
+6. **Reset Annotations**:
    - "Reset All Annotations" button allows clearing all annotations for the current day
    - Useful when starting over or when annotations need to be recreated
    - Provides immediate feedback when annotations are reset
 
-5. **Save & Close**:
-   - Primary button at the bottom of the annotation panel
-   - Saves all annotations and closes the panel
-   - Automatically updates the annotation summary
+7. **Save Annotations**:
+   - Save button within the popover saves annotations immediately
+   - Changes are also auto-saved when closing the popover
+   - Provides feedback when annotations are successfully saved
 
-6. **Annotation Summary**:
+8. **Annotation Summary**:
    - Displayed below the main image
    - Shows a comprehensive table of all ROIs for the current image
    - Includes filename, ROI name, discard status, snow presence, and flags

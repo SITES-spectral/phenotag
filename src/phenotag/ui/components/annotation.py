@@ -21,17 +21,85 @@ from phenotag.ui.components.roi_utils import serialize_polygons, deserialize_pol
 from phenotag.ui.components.flags_processor import FlagsProcessor
 
 
-def display_annotation_panel(current_filepath):
+def display_annotation_button(current_filepath):
     """
-    Display and manage ROI annotation panel in a popup.
+    Display a button that opens the annotation panel in a popover when clicked.
     
     Args:
         current_filepath (str): Path to the current image
     """
     if not current_filepath:
-        print("Cannot display annotation panel - no current filepath")
+        print("Cannot display annotation button - no current filepath")
         return
+    
+    # Debug log for troubleshooting
+    filename = os.path.basename(current_filepath)
+    print(f"Displaying annotation button for image: {filename}")
+    
+    # Make sure image_annotations is initialized
+    if 'image_annotations' not in st.session_state:
+        print("WARNING: image_annotations not in session state, initializing it now")
+        st.session_state.image_annotations = {}
+    
+    # Check if we have any annotations for this image
+    has_annotations = current_filepath in st.session_state.image_annotations
+    
+    # Check if we should try to load annotations from disk
+    if not has_annotations:
+        img_dir = os.path.dirname(current_filepath)
+        current_day = os.path.basename(img_dir)
+        annotations_file = os.path.join(img_dir, f"annotations_{current_day}.yaml")
         
+        # If annotations file exists but wasn't loaded, try to load it
+        if os.path.exists(annotations_file):
+            day_load_key = f"annotations_loaded_day_{current_day}"
+            if not st.session_state.get(day_load_key, False):
+                print(f"Annotations file exists but not loaded in memory. Will try to reload.")
+                # Get file paths for this day
+                from phenotag.ui.components.image_display import get_filtered_file_paths
+                selected_station = st.session_state.selected_station if 'selected_station' in st.session_state else None
+                selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None
+                selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
+                
+                daily_filepaths = get_filtered_file_paths(
+                    selected_station,
+                    selected_instrument,
+                    selected_year,
+                    current_day
+                )
+                
+                # Try to reload
+                load_day_annotations(current_day, daily_filepaths)
+                
+                # Check again if we have annotations
+                has_annotations = current_filepath in st.session_state.image_annotations
+    
+    # Create a container for the annotation status and button
+    cols = st.columns([2, 1])
+    
+    # Display annotation status
+    with cols[0]:
+        if has_annotations:
+            st.success("Annotated", icon="✅")
+        else:
+            st.warning("Not annotated", icon="⚠️")
+    
+    # Create a button to open the annotation panel
+    with cols[1]:
+        button_key = f"open_annotation_panel_{filename}"
+        button_label = "Annotate" if not has_annotations else "Edit"
+        if st.button(button_label, key=button_key, use_container_width=True):
+            # Show the annotation panel when the button is clicked
+            show_annotation_panel(current_filepath)
+
+
+def show_annotation_panel(current_filepath):
+    """
+    Display the annotation panel in a popover.
+    
+    Args:
+        current_filepath (str): Path to the current image
+    """
     # Get annotation timer to track activity
     from phenotag.ui.components.annotation_timer import annotation_timer
     
@@ -40,82 +108,33 @@ def display_annotation_panel(current_filepath):
     
     # Create a unique key for this image
     image_key = current_filepath
+    filename = os.path.basename(current_filepath)
     
-    # Debug log for troubleshooting
-    print(f"Displaying annotation panel for image: {os.path.basename(current_filepath)}")
+    # Record user interaction when annotation is viewed
+    annotation_timer.record_interaction()
     
-    # Make sure image_annotations is initialized
-    if 'image_annotations' not in st.session_state:
-        print("WARNING: image_annotations not in session state, initializing it now")
-        st.session_state.image_annotations = {}
-    
-    # Check if we have any annotations for this image
-    has_annotations = False
-    if image_key in st.session_state.image_annotations:
-        has_annotations = True
-        annotation_count = len(st.session_state.image_annotations[image_key])
-        print(f"Found existing annotations with {annotation_count} ROI entries")
-    else:
-        print("No annotations found for this image in session state")
+    # Display the popover
+    popover_title = f"Annotation Panel - {filename}"
+    with st.popover(popover_title):
+        # Show image filename at the top for confirmation
+        st.markdown(f"**Currently annotating:** {filename}")
+        st.markdown("---")
         
-        # Check if we should force a day reload
-        img_dir = os.path.dirname(current_filepath)
-        current_day = os.path.basename(img_dir)
-        day_load_key = f"annotations_loaded_day_{current_day}"
-        
-        # If annotations should be loaded but aren't, try to reload
-        annotations_file = os.path.join(img_dir, f"annotations_{current_day}.yaml")
-        if os.path.exists(annotations_file) and not st.session_state.get(day_load_key, False):
-            print(f"Annotations file exists but not loaded in memory. Will try to reload.")
-            # Get file paths for this day
-            from phenotag.ui.components.image_display import get_filtered_file_paths
-            selected_station = st.session_state.selected_station if 'selected_station' in st.session_state else None
-            selected_instrument = st.session_state.selected_instrument if 'selected_instrument' in st.session_state else None
-            selected_year = st.session_state.selected_year if 'selected_year' in st.session_state else None
-            
-            daily_filepaths = get_filtered_file_paths(
-                selected_station,
-                selected_instrument,
-                selected_year,
-                current_day
-            )
-            
-            # Try to reload
-            load_day_annotations(current_day, daily_filepaths)
-            
-            # Check again if we have annotations
-            if image_key in st.session_state.image_annotations:
-                has_annotations = True
-                annotation_count = len(st.session_state.image_annotations[image_key])
-                print(f"After reload: Found annotations with {annotation_count} ROI entries")
-    
-    # Create a row for annotation status and buttons
-    if has_annotations:
-        st.success("Annotated", icon="✅")
-    else:
-        # Show button to mark as completed without annotation
-        if st.button("No annotation needed", use_container_width=True):
+        # Show the No annotation needed button
+        no_annotation_key = f"no_annotation_needed_{filename}"
+        if st.button("No annotation needed", key=no_annotation_key, use_container_width=True):
             # Create default annotations with "not needed" flag
             create_default_annotations(current_filepath)
             
             # Force save
             save_all_annotations(force_save=True)
             
-            # Rerun to update the UI
-            st.rerun()
-    
-    # Add the annotation panel as a popover
-    popover_title = f"Annotation Panel - {os.path.basename(current_filepath)}"
-    with st.popover(popover_title):
-        # Record user interaction when annotation is viewed
-        annotation_timer.record_interaction()
+            # Show success message
+            st.success(f"Marked {filename} as not needing annotation")
         
-        # Show image filename at the top for confirmation
-        st.markdown(f"**Currently annotating:** {os.path.basename(current_filepath)}")
-        st.markdown("---")
-        
-        # Add the reset all annotations button at the top
-        if st.button("🔄 Reset All Annotations", key="reset_all_annotations", use_container_width=True):
+        # Add the reset all annotations button
+        reset_key = f"reset_all_annotations_{filename}"
+        if st.button("🔄 Reset All Annotations", key=reset_key, use_container_width=True):
             # Get the current day
             img_dir = os.path.dirname(current_filepath)
             current_day = os.path.basename(img_dir)
@@ -132,15 +151,161 @@ def display_annotation_panel(current_filepath):
             for filepath in daily_filepaths:
                 if filepath in st.session_state.image_annotations:
                     del st.session_state.image_annotations[filepath]
-                    
+            
             # Show confirmation
             st.success(f"Reset all annotations for day {current_day}")
-            
-            # Rerun to update UI
-            st.rerun()
         
-        # Now include the actual annotation interface in the popup
+        # Now include the actual annotation interface
         _create_annotation_interface(current_filepath)
+        
+        # Add a note about the Save & Close behavior
+        st.caption("Note: Click outside this panel to close. Changes are saved automatically when you close.")
+
+
+# This function has been replaced with display_annotation_button
+
+
+def display_raw_annotation_button(station_name, instrument_id, year, day):
+    """
+    Display a button that opens a popover with the raw annotation data.
+    
+    Args:
+        station_name (str): Station name
+        instrument_id (str): Instrument ID
+        year (str): Year
+        day (str): Day of year
+    """
+    if not day:
+        return
+        
+    # Create a unique key for the button
+    button_key = f"view_raw_annotations_{day}"
+    
+    # Add some space before the button
+    st.markdown("---")
+    
+    # Create the button to view raw annotations
+    if st.button("📄 View Raw Annotation Data", key=button_key, use_container_width=True):
+        # When the button is clicked, show the raw annotation data
+        display_raw_annotation_data(station_name, instrument_id, year, day)
+
+
+def display_raw_annotation_data(station_name, instrument_id, year, day):
+    """
+    Display the raw annotation data in a popover with tabs for dataframe and JSON views.
+    
+    Args:
+        station_name (str): Station name
+        instrument_id (str): Instrument ID
+        year (str): Year
+        day (str): Day of year
+    """
+    import json
+    import yaml
+    import pandas as pd
+    from io import StringIO
+    
+    # Find the annotation file path
+    if 'scan_info' in st.session_state:
+        base_dir = st.session_state.scan_info.get('base_dir')
+        if base_dir:
+            annotation_file_path = os.path.join(
+                base_dir,
+                station_name,
+                "phenocams",
+                "products",
+                instrument_id,
+                "L1",
+                year,
+                day,
+                f"annotations_{day}.yaml"
+            )
+            
+            # Check if the file exists
+            if os.path.exists(annotation_file_path):
+                # Open the popover to show the data
+                with st.popover(f"Annotation Data for Day {day}"):
+                    # Add tabs for different views
+                    df_tab, json_tab = st.tabs(["Dataframe View", "JSON View"])
+                    
+                    try:
+                        # Load the annotation data
+                        with open(annotation_file_path, 'r') as f:
+                            annotation_data = yaml.safe_load(f)
+                        
+                        # Create a dataframe view tab
+                        with df_tab:
+                            # Extract just the annotations portion for easier viewing
+                            annotations = annotation_data.get('annotations', {})
+                            
+                            # Metadata section
+                            st.subheader("Metadata")
+                            metadata = {k: v for k, v in annotation_data.items() if k != 'annotations'}
+                            st.dataframe(pd.DataFrame([metadata]))
+                            
+                            # Annotations section
+                            st.subheader("Annotations")
+                            
+                            # Create a flattened dataframe of all annotations
+                            flat_data = []
+                            
+                            for filename, rois in annotations.items():
+                                for roi in rois:
+                                    row = {
+                                        'Filename': filename,
+                                        'ROI': roi.get('roi_name', 'Unknown'),
+                                        'Discard': roi.get('discard', False),
+                                        'Snow Present': roi.get('snow_presence', False),
+                                        'No Annotation Needed': roi.get('not_needed', False),
+                                        'Flags': ', '.join(roi.get('flags', []))
+                                    }
+                                    flat_data.append(row)
+                            
+                            # Display as a searchable dataframe if we have data
+                            if flat_data:
+                                df = pd.DataFrame(flat_data)
+                                st.dataframe(
+                                    df,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "Filename": st.column_config.TextColumn("Filename", width="large"),
+                                        "ROI": st.column_config.TextColumn("ROI", width="medium"),
+                                        "Discard": st.column_config.CheckboxColumn("Discard", width="small"),
+                                        "Snow Present": st.column_config.CheckboxColumn("Snow Present", width="small"),
+                                        "No Annotation Needed": st.column_config.CheckboxColumn("No Annotation Needed", width="medium"),
+                                        "Flags": st.column_config.TextColumn("Flags", width="large")
+                                    }
+                                )
+                            else:
+                                st.info("No annotations found in this file.")
+                        
+                        # Create a JSON view tab 
+                        with json_tab:
+                            # Format the data as pretty JSON
+                            pretty_json = json.dumps(annotation_data, indent=2, default=str)
+                            
+                            # Display it with syntax highlighting
+                            st.code(pretty_json, language="json")
+                            
+                            # Add a download button
+                            download_key = f"download_json_{day}"
+                            st.download_button(
+                                "Download JSON", 
+                                pretty_json, 
+                                file_name=f"annotations_{day}.json", 
+                                mime="application/json",
+                                key=download_key
+                            )
+                    
+                    except Exception as e:
+                        st.error(f"Error loading annotation data: {str(e)}")
+            else:
+                st.warning(f"No annotation file found for day {day}")
+        else:
+            st.warning("Base directory not found in scan info")
+    else:
+        st.warning("Scan info not available. Please scan for images first.")
 
 
 def create_default_annotations(current_filepath):
@@ -393,8 +558,9 @@ def _create_annotation_interface(current_filepath):
     annotation_df = pd.DataFrame(annotation_data)
     
     # Add a title for the annotation panel with image filename
+    filename = os.path.basename(current_filepath)
     st.markdown("### ROI Annotations")
-    st.caption(f"Image: **{os.path.basename(current_filepath)}**")
+    st.caption(f"Image: **{filename}**")
     st.caption("Use the tabs below to annotate each Region of Interest")
     
     # Organize flags by category for the multiselect
@@ -520,12 +686,17 @@ def _create_annotation_interface(current_filepath):
     # Save the updated annotations to session state
     st.session_state.image_annotations[image_key] = updated_annotations
     
-    # Save and close button at the bottom
-    st.button(f"💾 Save & Close [{os.path.basename(current_filepath)}]", 
-              type="primary", 
-              use_container_width=True,
-              key="save_annotations_popup",
-              on_click=lambda: _handle_popup_save(image_key))
+    # Save button - changes are automatically saved when the popover is closed
+    filename = os.path.basename(current_filepath)
+    unique_button_key = f"save_annotations_{filename}"
+    
+    if st.button(f"💾 Save Annotations", 
+                type="primary", 
+                use_container_width=True,
+                key=unique_button_key):
+        # Save annotations immediately
+        save_all_annotations(force_save=True)
+        st.success(f"Annotations for {filename} saved successfully!")
 
 
 def display_annotation_completion_status(selected_day):
@@ -591,18 +762,7 @@ def display_annotation_completion_status(selected_day):
                     }
                 )
 
-def _handle_popup_save(image_key):
-    """
-    Handle saving annotations when the save button in the popup is clicked.
-    
-    Args:
-        image_key (str): Path to the image
-    """
-    # Save annotations
-    save_all_annotations(force_save=True)
-    
-    # Clear the popup flag
-    st.session_state.show_annotation_popup = False
+# This function has been removed and its functionality integrated into the save button
 
 
 def save_all_annotations(force_save=False):

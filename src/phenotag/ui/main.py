@@ -18,7 +18,6 @@ from phenotag.ui.components.scanner import handle_scan, should_auto_scan, setup_
 from phenotag.ui.components.calendar_view import display_calendar_view
 from phenotag.ui.components.image_display import display_images
 from phenotag.ui.components.annotation import (
-    display_annotation_panel, 
     load_day_annotations, 
     save_all_annotations, 
     create_annotation_summary,
@@ -174,10 +173,8 @@ def main():
     
     # Handle scanning if requested
     if hasattr(st.session_state, 'scan_requested') and st.session_state.scan_requested:
-        # Save any existing annotations before scanning
-        if 'image_annotations' in st.session_state and st.session_state.image_annotations:
-            save_all_annotations(force_save=True)
-            print("Saved annotations before scanning for images")
+        # No need to explicitly save before scanning - annotations managed by popover
+        print("Scanning for images - annotations are saved when made in the annotation panel")
             
         with MemoryTracker("Image Scanning"):
             if handle_scan(normalized_name, selected_instrument):
@@ -206,12 +203,10 @@ def main():
     # Set selected_tab for compatibility with remaining code
     selected_tab = "Current"
     
-    # Check if day or year changed and save annotations if needed
+    # Day or year change is now handled by the popover - no need to force save
     if (previous_day is not None and selected_day is not None and previous_day != selected_day) or \
        (previous_year is not None and selected_year is not None and previous_year != selected_year):
-        if 'image_annotations' in st.session_state and st.session_state.image_annotations:
-            save_all_annotations(force_save=True)
-            print(f"Saved annotations when changing from day {previous_day} to {selected_day} or year {previous_year} to {selected_year}")
+        print(f"Changed from day {previous_day} to {selected_day} or year {previous_year} to {selected_year}")
     
     # Store current values as previous for next run
     st.session_state['previous_year'] = selected_year
@@ -335,6 +330,16 @@ def main():
                 selected_day,
                 selected_days
             )
+            
+            # Add a button to view raw annotation data at the bottom
+            if selected_day:
+                from phenotag.ui.components.annotation import display_raw_annotation_button
+                display_raw_annotation_button(
+                    normalized_name,
+                    selected_instrument,
+                    selected_year,
+                    selected_day
+                )
     
     # We've moved the annotation panel to the image selection column
     # Make sure ROIs are loaded for use by the annotation panel
@@ -359,13 +364,8 @@ def main():
             with MemoryTracker("Load ROIs"):
                 load_instrument_rois()
                 
-    # Save annotations before leaving the page, but skip if just toggling ROI display
-    if ('image_annotations' in st.session_state and 
-        st.session_state.image_annotations and 
-        not st.session_state.get('roi_toggle_changed', False)):
-        save_all_annotations()
-    
-    # Reset the toggle flag for the next run
+    # No need to save annotations when leaving the page - annotations managed by popover
+    # Only reset ROI toggle flag
     if 'roi_toggle_changed' in st.session_state:
         del st.session_state['roi_toggle_changed']
     

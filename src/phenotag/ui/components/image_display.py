@@ -594,11 +594,18 @@ def display_images(normalized_name, selected_instrument, selected_year=None, sel
                     
                     # No navigation buttons - users will select directly from radio buttons
                     
-                    # Add annotation panel at the bottom of the image selection column
+                    # Add annotation button at the bottom of the image selection column
                     if 'current_filepath' in st.session_state and st.session_state.current_filepath:
                         st.markdown("---")
-                        from phenotag.ui.components.annotation import display_annotation_panel
-                        display_annotation_panel(st.session_state.current_filepath)
+                        from phenotag.ui.components.annotation import display_annotation_button
+                        
+                        # Create a key using just the filename - filenames are already unique
+                        filename = os.path.basename(st.session_state.current_filepath)
+                        refresh_key = f"annotation_button_{filename}"
+                        
+                        # Display the annotation button with the unique key to ensure it refreshes
+                        with st.container(key=refresh_key):
+                            display_annotation_button(st.session_state.current_filepath)
 
                 # Display the selected image in the main column
                 with main_col:
