@@ -400,6 +400,12 @@ def show_annotation_panel(current_filepath):
     in_permanent_storage = current_filepath in st.session_state.image_annotations
     in_temporary_storage = current_filepath in st.session_state.temp_annotations
     
+    print(f"DEBUG: Annotations for {filename} - in permanent storage: {in_permanent_storage}, in temporary storage: {in_temporary_storage}")
+    if in_permanent_storage:
+        print(f"DEBUG: Permanent storage annotation data: {st.session_state.image_annotations[current_filepath]}")
+    if in_temporary_storage:
+        print(f"DEBUG: Temporary storage annotation data: {st.session_state.temp_annotations[current_filepath]}")
+    
     # If in permanent but not temporary, copy to temporary
     if in_permanent_storage and not in_temporary_storage:
         # Deep copy to avoid reference issues
@@ -456,9 +462,15 @@ def show_annotation_panel(current_filepath):
                 
                 # Copy from temp to permanent storage and save directly
                 import copy
+                
+                # First ensure the temporary annotations are updated with the latest UI values
+                print(f"Saving annotations for {filename} - copying from temporary to permanent storage")
                 st.session_state.image_annotations[current_filepath] = copy.deepcopy(
                     st.session_state.temp_annotations[current_filepath]
                 )
+                
+                # Log the annotation data being saved
+                print(f"Annotation data being saved: {st.session_state.image_annotations[current_filepath]}")
                 
                 # Save to disk explicitly - only triggered by Save button
                 save_all_annotations(force_save=True)
@@ -1145,7 +1157,9 @@ def update_annotation_value(roi_name, field, value, annotations_storage, image_k
     # Sync between temporary and permanent storage if requested
     if sync_storages:
         # Determine which storage we're working with
-        is_temp_storage = annotations_storage is st.session_state.temp_annotations
+        is_temp_storage = False
+        if 'temp_annotations' in st.session_state and annotations_storage is st.session_state.temp_annotations:
+            is_temp_storage = True
         
         # Initialize other storage if needed
         if is_temp_storage:
@@ -1159,15 +1173,28 @@ def update_annotation_value(roi_name, field, value, annotations_storage, image_k
                 st.session_state.temp_annotations = {}
             other_storage = st.session_state.temp_annotations
         
+        # Make sure other_storage is different from annotations_storage
+        if other_storage is annotations_storage:
+            print(f"Warning: other_storage is the same as annotations_storage, skipping sync")
+            return
+        
         # Check if the image exists in the other storage
         if image_key in other_storage:
             # Find the same ROI and update the value
+            found_roi = False
             for other_anno in other_storage[image_key]:
                 if other_anno.get("roi_name") == roi_name:
-                    other_anno[field] = value
+                    # Deep copy for lists like flags
+                    if field == 'flags' and isinstance(value, list):
+                        import copy
+                        other_anno[field] = copy.deepcopy(value)
+                    else:  
+                        other_anno[field] = value
+                    found_roi = True
                     print(f"Synced update to {'permanent' if is_temp_storage else 'temporary'} storage")
                     break
-            else:
+            
+            if not found_roi:
                 print(f"Warning: ROI {roi_name} not found in {'permanent' if is_temp_storage else 'temporary'} storage")
         else:
             # Copy the entire annotations list to the other storage
@@ -1315,12 +1342,12 @@ def _create_annotation_interface(current_filepath, use_temp_storage=False):
                 value=roi_data.get('discard', False),
                 key=discard_key,
                 help="Mark this image/ROI as not suitable for analysis",
-                on_change=lambda: update_annotation_value(
-                    roi_name, 
+                on_change=lambda roi=roi_name, dk=discard_key, as_=annotations_storage, ik=image_key: update_annotation_value(
+                    roi, 
                     'discard', 
-                    st.session_state[discard_key],  # Get current value from session state
-                    annotations_storage, 
-                    image_key,
+                    st.session_state[dk],  # Get current value from session state
+                    as_, 
+                    ik,
                     sync_storages=True  # Sync between temporary and permanent storage
                 )
             )
@@ -1332,12 +1359,12 @@ def _create_annotation_interface(current_filepath, use_temp_storage=False):
                 value=roi_data.get('snow_presence', False),
                 key=snow_key,
                 help="Mark if snow is present in this ROI",
-                on_change=lambda: update_annotation_value(
-                    roi_name, 
+                on_change=lambda roi=roi_name, sk=snow_key, as_=annotations_storage, ik=image_key: update_annotation_value(
+                    roi, 
                     'snow_presence', 
-                    st.session_state[snow_key],  # Get current value from session state
-                    annotations_storage, 
-                    image_key,
+                    st.session_state[sk],  # Get current value from session state
+                    as_, 
+                    ik,
                     sync_storages=True  # Sync between temporary and permanent storage
                 )
             )
@@ -1362,12 +1389,12 @@ def _create_annotation_interface(current_filepath, use_temp_storage=False):
                 default=current_flags,
                 key=flags_key,
                 help="Select quality flags applicable to this ROI",
-                on_change=lambda: update_annotation_value(
-                    roi_name,
+                on_change=lambda roi=roi_name, fk=flags_key, as_=annotations_storage, ik=image_key: update_annotation_value(
+                    roi,
                     'flags',
-                    st.session_state[flags_key],  # Get current value from session state
-                    annotations_storage,
-                    image_key,
+                    st.session_state[fk],  # Get current value from session state
+                    as_,
+                    ik,
                     sync_storages=True  # Sync between temporary and permanent storage
                 )
             )
@@ -1425,15 +1452,29 @@ def _create_annotation_interface(current_filepath, use_temp_storage=False):
                     break
                     
             if roi00_data:
-                # Apply ROI_00 settings to all other ROIs in BOTH storages
-                for storage in [permanent_storage, temp_storage]:
+                # Apply ROI_00 settings to all other ROIs in temporary storage first
+                import copy
+                if image_key in temp_storage:
+                    for anno in temp_storage[image_key]:
+                        if anno["roi_name"] != "ROI_00":
+                            # Copy values directly
+                            anno["discard"] = roi00_data["discard"]
+                            anno["snow_presence"] = roi00_data["snow_presence"]
+                            anno["flags"] = copy.deepcopy(roi00_data["flags"])  # Deep copy the list
+                            print(f"Updated {anno['roi_name']} with ROI_00 settings in temporary storage")
+                
+                # Then deep copy from temporary to permanent
+                if image_key in temp_storage:
+                    permanent_storage[image_key] = copy.deepcopy(temp_storage[image_key])
+                    print(f"Copied updated temporary storage to permanent storage with ROI_00 settings")
+                    
+                # Verify by checking both storages
+                roi_count = 0
+                for storage_name, storage in [("temporary", temp_storage), ("permanent", permanent_storage)]:
                     if image_key in storage:
                         for anno in storage[image_key]:
                             if anno["roi_name"] != "ROI_00":
-                                # Copy values directly
-                                anno["discard"] = roi00_data["discard"]
-                                anno["snow_presence"] = roi00_data["snow_presence"]
-                                anno["flags"] = list(roi00_data["flags"])  # Create a new list
+                                roi_count += 1
                 
                 # Show success message
                 st.success(f"Applied ROI_00 settings to all {len(all_roi_names)-1} ROIs")
