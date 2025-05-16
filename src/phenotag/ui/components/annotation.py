@@ -105,9 +105,14 @@ def display_annotation_panel(current_filepath):
             st.rerun()
     
     # Add the annotation panel as a popover
-    with st.popover("Annotation Panel"):
+    popover_title = f"Annotation Panel - {os.path.basename(current_filepath)}"
+    with st.popover(popover_title):
         # Record user interaction when annotation is viewed
         annotation_timer.record_interaction()
+        
+        # Show image filename at the top for confirmation
+        st.markdown(f"**Currently annotating:** {os.path.basename(current_filepath)}")
+        st.markdown("---")
         
         # Add the reset all annotations button at the top
         if st.button("🔄 Reset All Annotations", key="reset_all_annotations", use_container_width=True):
@@ -387,8 +392,9 @@ def _create_annotation_interface(current_filepath):
     # Convert to DataFrame
     annotation_df = pd.DataFrame(annotation_data)
     
-    # Add a title for the annotation panel
+    # Add a title for the annotation panel with image filename
     st.markdown("### ROI Annotations")
+    st.caption(f"Image: **{os.path.basename(current_filepath)}**")
     st.caption("Use the tabs below to annotate each Region of Interest")
     
     # Organize flags by category for the multiselect
@@ -515,7 +521,7 @@ def _create_annotation_interface(current_filepath):
     st.session_state.image_annotations[image_key] = updated_annotations
     
     # Save and close button at the bottom
-    st.button("💾 Save & Close", 
+    st.button(f"💾 Save & Close [{os.path.basename(current_filepath)}]", 
               type="primary", 
               use_container_width=True,
               key="save_annotations_popup",
