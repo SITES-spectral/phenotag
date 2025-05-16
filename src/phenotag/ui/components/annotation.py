@@ -880,55 +880,55 @@ def display_raw_annotation_data(station_name, instrument_id, year, day):
                                                 mime="application/json",
                                                 key=f"download_image_{base_name}"
                                             )
-                                elif has_old_format:
-                                    # Display old format annotations
-                                    with open(old_format_file, 'r') as f:
-                                        old_data = yaml.safe_load(f)
-                                    
-                                    if 'annotations' in old_data:
-                                        # Get list of images
-                                        image_options = ["Select an image..."] + list(old_data['annotations'].keys())
+                                    elif has_old_format:
+                                        # Display old format annotations
+                                        with open(old_format_file, 'r') as f:
+                                            old_data = yaml.safe_load(f)
                                         
-                                        selected_img = st.selectbox(
-                                            "Select Image (from legacy format)",
-                                            options=image_options,
-                                            key=f"select_legacy_{day}"
-                                        )
-                                        
-                                        if selected_img and selected_img != "Select an image...":
-                                            # Get annotations for this image
-                                            img_annotations = old_data['annotations'][selected_img]
+                                        if 'annotations' in old_data:
+                                            # Get list of images
+                                            image_options = ["Select an image..."] + list(old_data['annotations'].keys())
                                             
-                                            # Create flattened view
-                                            flat_data = []
+                                            selected_img = st.selectbox(
+                                                "Select Image (from legacy format)",
+                                                options=image_options,
+                                                key=f"select_legacy_{day}"
+                                            )
                                             
-                                            for roi in img_annotations:
-                                                row = {
-                                                    'ROI': roi.get('roi_name', 'Unknown'),
-                                                    'Discard': roi.get('discard', False),
-                                                    'Snow Present': roi.get('snow_presence', False),
-                                                    'Use Default Annotation': roi.get('not_needed', False),
-                                                    'Flags': ', '.join(roi.get('flags', []))
-                                                }
-                                                flat_data.append(row)
-                                            
-                                            # Display as dataframe
-                                            if flat_data:
-                                                df = pd.DataFrame(flat_data)
-                                                st.dataframe(
-                                                    df,
-                                                    use_container_width=True,
-                                                    hide_index=True
-                                                )
+                                            if selected_img and selected_img != "Select an image...":
+                                                # Get annotations for this image
+                                                img_annotations = old_data['annotations'][selected_img]
                                                 
-                                                # Add note about legacy format
-                                                st.info("Note: This data is stored in the legacy day-based format. Consider migrating to the new per-image format.")
-                                            else:
-                                                st.info("No ROI annotations found for this image")
+                                                # Create flattened view
+                                                flat_data = []
+                                                
+                                                for roi in img_annotations:
+                                                    row = {
+                                                        'ROI': roi.get('roi_name', 'Unknown'),
+                                                        'Discard': roi.get('discard', False),
+                                                        'Snow Present': roi.get('snow_presence', False),
+                                                        'Use Default Annotation': roi.get('not_needed', False),
+                                                        'Flags': ', '.join(roi.get('flags', []))
+                                                    }
+                                                    flat_data.append(row)
+                                                
+                                                # Display as dataframe
+                                                if flat_data:
+                                                    df = pd.DataFrame(flat_data)
+                                                    st.dataframe(
+                                                        df,
+                                                        use_container_width=True,
+                                                        hide_index=True
+                                                    )
+                                                    
+                                                    # Add note about legacy format
+                                                    st.info("Note: This data is stored in the legacy day-based format. Consider migrating to the new per-image format.")
+                                                else:
+                                                    st.info("No ROI annotations found for this image")
+                                        else:
+                                            st.warning("No annotation data found in legacy file")
                                     else:
-                                        st.warning("No annotation data found in legacy file")
-                                else:
-                                    st.warning("No image annotation files found")
+                                        st.warning("No image annotation files found")
                             except Exception as e:
                                 st.error(f"Error loading image data: {str(e)}")
                 else:
