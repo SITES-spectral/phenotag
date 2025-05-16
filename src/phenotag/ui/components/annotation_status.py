@@ -7,6 +7,7 @@ for different days, instruments, and stations.
 import os
 import yaml
 import streamlit as st
+from pathlib import Path
 
 
 def check_day_annotation_status(base_dir, station_name, instrument_id, year, day):
@@ -23,6 +24,10 @@ def check_day_annotation_status(base_dir, station_name, instrument_id, year, day
     Returns:
         str: Status - 'not_annotated', 'in_progress', or 'completed'
     """
+    # Get the normalized station name for consistent directory paths
+    from phenotag.ui.components.annotation_status_manager import get_normalized_station_name
+    normalized_name = get_normalized_station_name(station_name)
+    
     # Check if we have this in our status cache
     if 'annotation_status_map' in st.session_state:
         # Create a key for this month (extract month from day number)
@@ -30,7 +35,8 @@ def check_day_annotation_status(base_dir, station_name, instrument_id, year, day
             from datetime import datetime
             date = datetime.strptime(f"{year}-{day}", "%Y-%j")
             month = date.month
-            status_key = f"{station_name}_{instrument_id}_{year}_{month}"
+            # Use the normalized station name for cache key consistency
+            status_key = f"{normalized_name}_{instrument_id}_{year}_{month}"
             
             # Check if we have this month in our cache
             if status_key in st.session_state.annotation_status_map:
@@ -47,7 +53,7 @@ def check_day_annotation_status(base_dir, station_name, instrument_id, year, day
     # Path to the annotation file
     day_dir = os.path.join(
         base_dir, 
-        station_name, 
+        normalized_name,  # Use normalized station name for path
         "phenocams", 
         "products", 
         instrument_id, 

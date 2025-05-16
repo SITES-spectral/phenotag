@@ -12,6 +12,21 @@ from typing import List, Dict, Set, Optional, Union, Tuple
 import calendar
 
 
+def get_normalized_station_name(station_name: str) -> str:
+    """
+    Get the normalized station name for consistent directory paths.
+    
+    Args:
+        station_name: Station name (either normalized or display name)
+        
+    Returns:
+        Normalized station name
+    """
+    # Import here to avoid circular imports
+    from phenotag.ui.components.annotation_status_manager import get_normalized_station_name as get_name
+    return get_name(station_name)
+
+
 def get_available_years(base_dir: Union[str, Path], station_name: str, instrument_id: str) -> List[str]:
     """
     Get available years by scanning L1 directories without loading any image data.
@@ -26,8 +41,11 @@ def get_available_years(base_dir: Union[str, Path], station_name: str, instrumen
     """
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
     
+    # Get the normalized station name for consistent directory paths
+    normalized_name = get_normalized_station_name(station_name)
+    
     # Construct path to L1 directory
-    l1_path = base_dir / station_name / "phenocams" / "products" / instrument_id / "L1"
+    l1_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1"
     
     if not l1_path.exists() or not l1_path.is_dir():
         return []
@@ -59,8 +77,11 @@ def get_days_in_year(base_dir: Union[str, Path], station_name: str,
     """
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
     
+    # Get the normalized station name for consistent directory paths
+    normalized_name = get_normalized_station_name(station_name)
+    
     # Construct path to year directory
-    year_path = base_dir / station_name / "phenocams" / "products" / instrument_id / "L1" / year
+    year_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year
     
     if not year_path.exists() or not year_path.is_dir():
         return []
@@ -125,10 +146,14 @@ def count_images_in_days(base_dir: Union[str, Path], station_name: str,
         Dictionary mapping day of year to image count
     """
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
+    
+    # Get the normalized station name for consistent directory paths
+    normalized_name = get_normalized_station_name(station_name)
+    
     counts = {}
 
     # Add debug output for tracing
-    print(f"Counting images for {len(days)} days in {base_dir}/{station_name}/phenocams/products/{instrument_id}/L1/{year}")
+    print(f"Counting images for {len(days)} days in {base_dir}/{normalized_name}/phenocams/products/{instrument_id}/L1/{year}")
 
     for day in days:
         # Try both with and without leading zeros to handle filesystem differences
@@ -139,15 +164,15 @@ def count_images_in_days(base_dir: Union[str, Path], station_name: str,
         day_as_int = str(int(day))
 
         # First try with the original format
-        day_path = base_dir / station_name / "phenocams" / "products" / instrument_id / "L1" / year / day_with_zeros
+        day_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_with_zeros
 
         # If that doesn't exist, try without leading zeros
         if not day_path.exists() or not day_path.is_dir():
-            day_path = base_dir / station_name / "phenocams" / "products" / instrument_id / "L1" / year / day_without_zeros
+            day_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_without_zeros
 
             # If that still doesn't exist, try with integer format
             if not day_path.exists() or not day_path.is_dir():
-                day_path = base_dir / station_name / "phenocams" / "products" / instrument_id / "L1" / year / day_as_int
+                day_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_as_int
                 
                 # If that still doesn't exist, mark as having zero images
                 if not day_path.exists() or not day_path.is_dir():

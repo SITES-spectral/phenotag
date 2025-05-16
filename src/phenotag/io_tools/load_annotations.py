@@ -47,8 +47,12 @@ def load_annotations(base_dir: str, station_name: str,
         dict: Annotation data if file exists, empty dict otherwise
     """
     try:
+        # Get the normalized station name for consistent directory paths
+        from phenotag.ui.components.annotation_status_manager import get_normalized_station_name
+        normalized_name = get_normalized_station_name(station_name)
+        
         # Construct the path to the annotations file
-        annotations_dir = Path(base_dir) / station_name / 'phenocams' / 'products' / instrument_id / 'L1' / str(year) / str(day)
+        annotations_dir = Path(base_dir) / normalized_name / 'phenocams' / 'products' / instrument_id / 'L1' / str(year) / str(day)
         annotations_file = annotations_dir / 'annotations.yaml'
         
         # Check if file exists

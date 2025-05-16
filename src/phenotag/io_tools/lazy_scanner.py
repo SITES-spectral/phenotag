@@ -17,6 +17,21 @@ from .load_annotations import load_annotations
 from .defaults import get_default_quality_data, get_default_roi_data
 
 
+def get_normalized_station_name(station_name: str) -> str:
+    """
+    Get the normalized station name for consistent directory paths.
+    
+    Args:
+        station_name: Station name (either normalized or display name)
+        
+    Returns:
+        Normalized station name
+    """
+    # Import here to avoid circular imports
+    from phenotag.ui.components.annotation_status_manager import get_normalized_station_name as get_name
+    return get_name(station_name)
+
+
 def get_available_years(base_dir: Union[str, Path], station_name: str, instrument_id: str) -> List[str]:
     """
     Get a list of available years for a given station and instrument.
@@ -32,8 +47,11 @@ def get_available_years(base_dir: Union[str, Path], station_name: str, instrumen
     """
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
     
+    # Get the normalized station name for consistent directory paths
+    normalized_name = get_normalized_station_name(station_name)
+    
     # Construct the path to the L1 directory
-    l1_dir = base_dir / station_name / "phenocams" / "products" / instrument_id / "L1"
+    l1_dir = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1"
     
     if not l1_dir.exists() or not l1_dir.is_dir():
         return []
@@ -69,8 +87,11 @@ def get_available_days_in_year(base_dir: Union[str, Path], station_name: str,
     """
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
     
+    # Get the normalized station name for consistent directory paths
+    normalized_name = get_normalized_station_name(station_name)
+    
     # Construct the path to the year directory
-    year_dir = base_dir / station_name / "phenocams" / "products" / instrument_id / "L1" / year
+    year_dir = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year
     
     if not year_dir.exists() or not year_dir.is_dir():
         return []
@@ -218,6 +239,9 @@ def scan_selected_days(base_dir: Union[str, Path], station_name: str,
     # Initialize result structure
     result = defaultdict(dict)
     
+    # Get the normalized station name for consistent directory paths
+    normalized_name = get_normalized_station_name(station_name)
+    
     # Scan only the specified days
     for day in days:
         # Ensure day is properly formatted (3 digits with leading zeros)
@@ -228,11 +252,11 @@ def scan_selected_days(base_dir: Union[str, Path], station_name: str,
         day_without_zeros = day.lstrip('0') if day else '0'
 
         # First try with the original format
-        day_dir = Path(base_dir) / station_name / "phenocams" / "products" / instrument_id / "L1" / year / day_with_zeros
+        day_dir = Path(base_dir) / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_with_zeros
 
         # If that doesn't exist, try without leading zeros
         if not day_dir.exists() or not day_dir.is_dir():
-            day_dir = Path(base_dir) / station_name / "phenocams" / "products" / instrument_id / "L1" / year / day_without_zeros
+            day_dir = Path(base_dir) / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_without_zeros
 
             # If that still doesn't exist, skip this day
             if not day_dir.exists() or not day_dir.is_dir():

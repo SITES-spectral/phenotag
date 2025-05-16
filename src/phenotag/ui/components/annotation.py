@@ -569,17 +569,25 @@ def display_annotation_panel(current_filepath):
             last_save = st.session_state.last_save_time.strftime("%H:%M:%S") if st.session_state.last_save_time else "Never"
             st.success(f"All changes saved at {last_save}", icon="✅")
         
-        # Setup auto-save if enabled (simplified without tab-specific keys)
-        auto_save = st.checkbox("Enable auto-save", value=st.session_state.get('auto_save_enabled', True), 
+        # Initialize auto-save and immediate save settings if not already set
+        if 'auto_save_enabled' not in st.session_state:
+            st.session_state.auto_save_enabled = True
+        if 'immediate_save_enabled' not in st.session_state:
+            st.session_state.immediate_save_enabled = True
+            
+        # Create checkbox widgets for auto-save settings
+        # NOTE: Instead of value= from session state, we first initialize and then create widget
+        auto_save = st.checkbox("Enable auto-save", 
+                           value=st.session_state.auto_save_enabled,
                            help="Automatically save annotations every 60 seconds",
                            key=f"auto_save_enabled_{image_key}")
         
-        # Add immediate save option
-        immediate_save = st.checkbox("Save immediately on changes", value=st.session_state.get('immediate_save_enabled', True),
+        immediate_save = st.checkbox("Save immediately on changes", 
+                                value=st.session_state.immediate_save_enabled,
                                 help="Automatically save annotations immediately when changes are made",
                                 key=f"immediate_save_enabled_{image_key}")
         
-        # Store auto-save preferences in session state
+        # Update session state from widget values
         st.session_state.auto_save_enabled = auto_save
         st.session_state.immediate_save_enabled = immediate_save
         
@@ -969,20 +977,20 @@ def load_day_annotations(selected_day, daily_filepaths):
                                         roi_name = anno.get('roi_name')
                                         roi_key = f"{roi_name}_{filepath}"
                                         
-                                        # Set flags in session state for the multiselect widget
-                                        flags_key = f"flags_{roi_key}"
-                                        st.session_state[flags_key] = anno.get('flags', [])
-                                        print(f"Setting {flags_key} = {anno.get('flags', [])}")
+                                        # IMPORTANT: We don't set session state directly for widgets anymore
+                                        # as it causes a Streamlit warning. Instead, we'll use the default values
+                                        # when creating the widgets. The annotation data is already stored in
+                                        # st.session_state.image_annotations, which is used to set the defaults
+                                        # when creating the widgets.
+                                        pass
                                         
-                                        # Set discard status
-                                        discard_key = f"discard_{roi_key}"
-                                        st.session_state[discard_key] = anno.get('discard', False)
-                                        print(f"Setting {discard_key} = {anno.get('discard', False)}")
-                                        
-                                        # Set snow presence
-                                        snow_key = f"snow_{roi_key}"
-                                        st.session_state[snow_key] = anno.get('snow_presence', False)
-                                        print(f"Setting {snow_key} = {anno.get('snow_presence', False)}")
+                                        # Old approach that caused warnings:
+                                        # flags_key = f"flags_{roi_key}"
+                                        # st.session_state[flags_key] = anno.get('flags', [])
+                                        # discard_key = f"discard_{roi_key}"
+                                        # st.session_state[discard_key] = anno.get('discard', False)
+                                        # snow_key = f"snow_{roi_key}"
+                                        # st.session_state[snow_key] = anno.get('snow_presence', False)
                                     
                                     loaded_count += 1
                                     print(f"Loaded annotations for image: {img_name} - {len(processed_annotations)} ROIs")
@@ -1016,17 +1024,18 @@ def load_day_annotations(selected_day, daily_filepaths):
                                             if converted_annotations:
                                                 st.session_state.image_annotations[filepath] = converted_annotations
                                                 
-                                                # Set widget states for each ROI
-                                                for anno in converted_annotations:
-                                                    roi_name = anno.get('roi_name')
-                                                    roi_key = f"{roi_name}_{filepath}"
-                                                    
-                                                    # Set flags in session state for the multiselect widget
-                                                    st.session_state[f"flags_{roi_key}"] = anno.get('flags', [])
-                                                    
-                                                    # Set discard and snow presence checkboxes
-                                                    st.session_state[f"discard_{roi_key}"] = anno.get('discard', False)
-                                                    st.session_state[f"snow_{roi_key}"] = anno.get('snow_presence', False)
+                                                # We don't need to set widget states directly anymore
+                                                # The annotation data is already stored in st.session_state.image_annotations
+                                                # and will be used as defaults when creating the widgets
+                                                pass
+                                                
+                                                # Old approach that caused warnings:
+                                                # for anno in converted_annotations:
+                                                #     roi_name = anno.get('roi_name')
+                                                #     roi_key = f"{roi_name}_{filepath}"
+                                                #     st.session_state[f"flags_{roi_key}"] = anno.get('flags', [])
+                                                #     st.session_state[f"discard_{roi_key}"] = anno.get('discard', False)
+                                                #     st.session_state[f"snow_{roi_key}"] = anno.get('snow_presence', False)
                                                 
                                                 loaded_count += 1
                                                 print(f"Converted and loaded annotations for image: {img_name} - {len(converted_annotations)} ROIs")
