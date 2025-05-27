@@ -1,3 +1,10 @@
+---
+![SITES Spectral Thematic Center](https://h24-original.s3.amazonaws.com/231546/28893673-EQhe9.png "SITES Spectral Thematic Center")
+
+# Swedish Infrastructure for Ecosystem Science (SITES) - Spectral | Thematic Center (SSTC)
+
+["SITES spectral"](https://www.fieldsites.se/en-GB/sites-thematic-programs/sites-spectral-32634403)
+
 # PhenoTag
 
 A tool for annotating phenocam images with quality indicators and regions of interest (ROIs) for the SITES Spectral ecosystem.
@@ -68,13 +75,45 @@ phenotag run --memory-optimized
 
 # Run with specific port and host
 phenotag run --port 8080 --host 0.0.0.0
+
+# Image utilities - get default ROI for a JPEG image
+phenotag images default-roi path/to/image.jpg
+
+# Get default ROI in JSON format with custom parameters
+phenotag images default-roi path/to/image.jpg --format json --roi-name "Custom_ROI" --color "255,0,0"
 ```
 
-Command line options:
+#### Run Command Options:
 - `--port/-p`: Specify the port (default: 8501)
 - `--host`: Specify the host (default: localhost)
 - `--browser`: Open the UI in the default browser
 - `--memory-optimized/-m`: Use memory-optimized version with advanced memory management
+
+#### Image Utilities
+
+The `images default-roi` command generates default ROI coordinates for JPEG images using the same intelligent sky detection algorithm as the main application:
+
+```bash
+# Basic usage - outputs YAML format compatible with stations.yaml
+phenotag images default-roi image.jpg
+
+# Output in JSON format
+phenotag images default-roi image.jpg --format json
+
+# Customize ROI parameters
+phenotag images default-roi image.jpg --roi-name "ROI_02" --color "255,0,0" --thickness 5
+```
+
+**Options:**
+- `--format/-f`: Output format - 'yaml' (default) or 'json'
+- `--roi-name`: Name for the ROI (default: 'ROI_00')
+- `--color`: RGB color as comma-separated values (default: '0,255,0' for green)
+- `--thickness`: Line thickness for the ROI (default: 7)
+
+The default ROI algorithm intelligently detects and excludes sky areas when possible, or falls back to the full image frame. This ensures optimal region selection for phenological analysis.
+
+For detailed information about the algorithm, see `docs/default_roi_algorithm.md`.
+For practical examples and workflow integration, see `docs/default_roi_examples.md`.
 
 ## Data Organization
 
@@ -171,7 +210,7 @@ The annotation system features:
   - Persists timing data in annotation files for reporting and analytics
   - Accumulates annotation time across multiple sessions
 
-For detailed documentation, see `docs/annotation_system.md`.
+For detailed documentation, see `docs/api-reference/annotation_system.md`.
 
 ## Development
 
@@ -186,6 +225,16 @@ For detailed documentation, see `docs/annotation_system.md`.
 - `docs/`: Documentation
 - `tests/`: Test files
 
+### Key Documentation
+
+- `docs/`: Main documentation index
+- `docs/user-guide/`: User guides and tutorials
+- `docs/developer-guide/`: Developer documentation and integration guides
+- `docs/configuration/`: Configuration file schemas and documentation
+- `docs/algorithms/`: Algorithm documentation (ROI detection, etc.)
+- `docs/api-reference/`: API and system documentation
+- `docs/external_api_docs/`: Third-party library documentation
+
 ### Adding New Features
 
 When adding new features:
@@ -193,3 +242,43 @@ When adding new features:
 2. Add appropriate tests
 3. Update documentation
 4. Ensure session state persistence if applicable
+
+## Maintainers
+
+* José M. Beltrán-Abaunza, PhD | Lund University, Department of Physical Geography and Ecosystem Science | SITES spectral Research Engineer
+
+## Contributors
+
+* José M. Beltrán-Abaunza, PhD | Lund University, Department of Physical Geography and Ecosystem Science | SITES spectral Research Engineer
+* Lars Eklundh, Professor | Lund University, Department of Physical Geography and Ecosystem Science | SITES spectral Coordinator
+
+## Development Support
+
+This package was developed with support from [Claude](https://claude.ai/code) (Anthropic's Claude 3.5 Sonnet model), which assisted with code refactoring, documentation organization, and architectural improvements.
+
+## Citation
+
+If you use this package in your research, please cite it as follows:
+
+**Chicago Style (Author-Date):**
+
+Beltrán-Abaunza, José M., and Lars Eklundh. *PhenoTag: A Python Package for Phenological Image Annotation*. Version [version]. Lund: SITES Spectral Thematic Center, Lund University, 2025. https://github.com/sites-spectral/phenotag.
+
+**Chicago Style (Notes-Bibliography):**
+
+Beltrán-Abaunza, José M., and Lars Eklundh. *PhenoTag: A Python Package for Phenological Image Annotation*. Version [version]. Lund: SITES Spectral Thematic Center, Lund University, 2025. https://github.com/sites-spectral/phenotag.
+
+**BibTeX:**
+```bibtex
+@software{beltran_abaunza_phenotag_2025,
+  author = {Beltrán-Abaunza, José M. and Eklundh, Lars},
+  title = {PhenoTag: A Python Package for Phenological Image Annotation},
+  year = {2025},
+  publisher = {SITES Spectral Thematic Center, Lund University},
+  address = {Lund, Sweden},
+  url = {https://github.com/sites-spectral/phenotag},
+  note = {Version [version]}
+}
+```
+
+*Replace [version] with the specific version number you used.*

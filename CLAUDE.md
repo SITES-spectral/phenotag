@@ -33,6 +33,33 @@ Command line options:
 - `--host`: Specify the host (default: localhost)
 - `--browser`: Open the UI in the default browser
 
+### Image Utilities
+
+```bash
+# Get default ROI for a JPEG image in YAML format (compatible with stations.yaml)
+python -m phenotag.cli.main images default-roi path/to/image.jpg
+
+# Get default ROI in JSON format
+python -m phenotag.cli.main images default-roi path/to/image.jpg --format json
+
+# Customize ROI parameters
+python -m phenotag.cli.main images default-roi path/to/image.jpg \
+  --roi-name "ROI_02" \
+  --color "255,0,0" \
+  --thickness 5
+```
+
+The `default-roi` command uses the same intelligent sky detection algorithm as the main application to generate a default ROI that excludes sky areas when possible, or falls back to the full image frame.
+
+For comprehensive details about the algorithm, see `docs/default_roi_algorithm.md`.
+For practical examples and workflow integration, see `docs/default_roi_examples.md`.
+
+Command line options:
+- `--format/-f`: Output format - 'yaml' (default) or 'json'
+- `--roi-name`: Name for the ROI (default: 'ROI_00')
+- `--color`: RGB color as comma-separated values (default: '0,255,0' for green)
+- `--thickness`: Line thickness for the ROI (default: 7)
+
 ### Testing
 
 ```bash

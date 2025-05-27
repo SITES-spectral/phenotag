@@ -220,6 +220,22 @@ Thumbs.db
 temp/
 tmp/
 
+# Data files and results
+*.csv
+*.CSV
+results/
+*results*/
+*_results/
+*_results.*
+output/
+*output*/
+*_output/
+*_output.*
+data/
+*data*/
+*_data/
+*_data.*
+
 # Deprecated files and directories
 *[dD]eprecated*/
 *[dD]eprecated*

@@ -320,8 +320,8 @@ stations:
       platforms:
         PL:
           instruments:
-            SKC_FOR_PL01_PHE01:
-              id: SKC_FOR_PL01_PHE01
+            SKC_CEM_FOR_PL01_PHE01:
+              id: SKC_CEM_FOR_PL01_PHE01
               type: phenocam
               ecosystem: FOR
               location: PL01
@@ -333,19 +333,19 @@ stations:
               geolocation:
                 point:
                   epsg: "epsg:4326"
-                  latitude_dd: 58.363058
-                  longitude_dd: 12.14965
+                  latitude_dd: 58.363865
+                  longitude_dd: 58.363865
               instrument_height_in_meters_above_ground: 38
               instrument_viewing_direction: South
               instrument_azimuth_in_degrees: 185
               instrument_degrees_from_nadir: 38      
-              legacy_acronym: CEM-FOR-P01
+              legacy_acronym: CEM01-FOR-P01
               rois:
                 ROI_01: {'points': [[300, 1800], [300, 400], [2700, 400], [2700, 1200], [2400, 1400], [2200, 1800]], 'color': [0, 255, 0], 'thickness': 7}
                 ROI_02: {'points': [[2600, 1950], [2600, 1680], [2950, 1680], [2950, 1950]], 'color': [0, 0, 255], 'thickness': 7}    
 
-            SKC_FOR_PL02_PHE01:
-              id: SKC_FOR_PL02_PHE01
+            SKC_CEM_FOR_PL02_PHE01:
+              id: SKC_CEM_FOR_PL02_PHE01
               type: phenocam
               ecosystem: FOR
               location: PL02
@@ -357,18 +357,18 @@ stations:
               geolocation:
                 point:
                   epsg: "epsg:4326"
-                  latitude_dd: 58.363718
-                  longitude_dd: 12.149323
+                  latitude_dd:  58.363759   # 58.363718
+                  longitude_dd: 12.149442   #12.149323
               instrument_height_in_meters_above_ground: 3
               instrument_viewing_direction: West
               instrument_azimuth_in_degrees: 270
               instrument_degrees_from_nadir: 47      
-              legacy_acronym: CEM-FOR-P02
+              legacy_acronym: CEM02-FOR-P02
               rois:
                 ROI_01: {'points': [[2550, 700], [2550, 1850], [700, 1850], [700, 700]], 'color': [0, 255, 0], 'thickness': 7} 
 
-            SKC_FOR_PL03_PHE01:
-              id: SKC_FOR_PL03_PHE01
+            SKC_CEM_FOR_PL03_PHE01:
+              id: SKC_CEM_FOR_PL03_PHE01
               type: phenocam
               ecosystem: FOR
               location: PL03
@@ -380,13 +380,13 @@ stations:
               geolocation:
                 point:
                   epsg: "epsg:4326"
-                  latitude_dd: 58.363555
-                  longitude_dd: 12.149786
+                  latitude_dd:  58.363596  #58.363555
+                  longitude_dd: 12.149933  #12.149786
               instrument_height_in_meters_above_ground: 3
-              instrument_viewing_direction: West
-              instrument_azimuth_in_degrees: 270
+              instrument_viewing_direction: West?
+              instrument_azimuth_in_degrees: 270?
               instrument_degrees_from_nadir: 42      
-              legacy_acronym: CEM-FOR-P03
+              legacy_acronym: CEM03-FOR-P03
               rois:
                 ROI_01: {'points': [[500, 500], [2500, 500], [2500, 1750], [500,1750]], 'color': [0, 255, 0], 'thickness': 7}     
 
@@ -413,21 +413,6 @@ stations:
               rois:
                 ROI_01: {'points': [[300, 1800], [300, 400], [2700, 400], [2700, 1200], [2400, 1400], [2200, 1800]], 'color': [0, 255, 0], 'thickness': 7}
                 ROI_02: {'points': [[2600, 1950], [2600, 1680], [2950, 1680], [2950, 1950]], 'color': [0, 0, 255], 'thickness': 7} 
-
-            SKC_FOR_PL01_PHE02:
-              id: SKC_FOR_PL01_PHE02
-              type: phenocam
-              ecosystem: FOR
-              location: PL01
-              instrument_number: PHE02
-              status: Active
-            SKC_WET_PL01_PHE01:
-              id: SKC_WET_PL01_PHE01
-              type: phenocam
-              ecosystem: WET
-              location: PL01
-              instrument_number: PHE01
-              status: Active
             STM_FOR_PL01_PHE01:
               id: STM_FOR_PL01_PHE01
               type: phenocam
@@ -435,6 +420,126 @@ stations:
               location: PL01
               instrument_number: PHE01
               status: Active
+              deployment_date:
+              platform_mounting_structure: Mast
+              platform_height_in_meters_above_ground: 
+              geolocation:
+                point:
+                  epsg: "epsg:4326"
+                  latitude_dd: 58.368601
+                  longitude_dd: 12.145319
+                  notes: URGENT REQUIRES NAME AND LOCATION used Phenocam Replanted, C-mast-5, MCM05 because missing info
+              instrument_height_in_meters_above_ground: 
+              instrument_viewing_direction:       
+              instrument_azimuth_in_degrees: 
+              instrument_degrees_from_nadir:
+              legacy_acronym: STM-FOR-P01              
+              rois:
+                ROI_00:                                
+            SKC_MAD_WET_PL01_PHE01:
+              id: SKC_WET_PL02_PHE01
+              type: phenocam
+              ecosystem: WET
+              location: PL02
+              instrument_number: PHE01
+              status: Active
+              deployment_date:
+              platform_mounting_structure: Mast
+              platform_height_in_meters_above_ground: 
+              geolocation:
+                point:
+                  epsg: "epsg:4326"
+                  latitude_dd: 58.368601
+                  longitude_dd: 12.145319
+                  notes: URGENT NAME AND LOCATION CONFIRMATION  
+              instrument_height_in_meters_above_ground: 
+              instrument_viewing_direction:       
+              instrument_azimuth_in_degrees: 
+              instrument_degrees_from_nadir:
+              legacy_acronym: MAD-WET-P01             
+              rois:
+                ROI_00:                               
+            SKC_MAD_FOR_PL02_PHE01:
+              id: SKC_FOR_PL04_PHE01
+              type: phenocam
+              ecosystem: FOR
+              location: PL04
+              instrument_number: PHE01
+              status: Active
+              deployment_date:
+              platform_mounting_structure: Mast
+              platform_height_in_meters_above_ground: 
+              geolocation:
+                point:
+                  epsg: "epsg:4326"
+                  latitude_dd: 58.368601
+                  longitude_dd: 12.145319
+                  notes: URGENT NAME AND LOCATION CONFIRMATION  
+              instrument_height_in_meters_above_ground: 
+              instrument_viewing_direction:       
+              instrument_azimuth_in_degrees: 
+              instrument_degrees_from_nadir:
+              legacy_acronym: MAD-FOR-P01             
+              rois:
+                ROI_00:              
+            SKC_SRC_FOL_WET_PL01_PHE01:
+              id: SKC_SRC_FOL_WET_PL01_PHE01
+              type: phenocam
+              ecosystem: WET
+              location: PL03
+              instrument_number: PHE01
+              status: Active              
+              deployment_date:
+              platform_mounting_structure: Mast
+              platform_height_in_meters_above_ground: 
+              geolocation:
+                point:
+                  epsg: "epsg:4326"
+                  latitude_dd: 58.375661
+                  longitude_dd: 12.1540160
+              instrument_height_in_meters_above_ground: 
+              instrument_viewing_direction:       
+              instrument_azimuth_in_degrees: 
+              instrument_degrees_from_nadir:
+              legacy_acronym: FOL-WET-P01               
+              rois:
+                ROI_00:              
+            SKC_SRC_FOL_WET_PL02_PHE01:
+              id: SKC_SRC_FOL_WET_PL02_PHE01
+              type: phenocam
+              ecosystem: WET
+              location: PL04
+              instrument_number: PHE01
+              status: Active
+              deployment_date:
+              platform_mounting_structure: Mast
+              platform_height_in_meters_above_ground: 
+              geolocation:
+                point:
+                  epsg: "epsg:4326"
+                  latitude_dd: 58.375854
+                  longitude_dd: 12.154016
+              instrument_height_in_meters_above_ground: 
+              instrument_viewing_direction:       
+              instrument_azimuth_in_degrees: 
+              instrument_degrees_from_nadir:
+              legacy_acronym: FOL-WET-P02               
+              rois:
+                ROI_00:                  
+            #SKC_FOR_PL01_PHE02:
+            #  id: SKC_FOR_PL01_PHE02
+            #  type: phenocam
+            #  ecosystem: FOR
+            #  location: PL01
+            #  instrument_number: PHE02
+            #  status: Active
+            #SKC_WET_PL01_PHE01:
+            #  id: SKC_WET_PL01_PHE01
+            #  type: phenocam
+            #  ecosystem: WET
+            #  location: PL01
+            #  instrument_number: PHE01
+            #  status: Active
 
   svartberget:
     normalized_name: svartberget
@@ -516,7 +621,7 @@ stations:
               ecosystem: FOR
               location: PL01
               instrument_number: PHE01
-              status: Inactive
+              status: Inactive              
               deployment_date:
               platform_mounting_structure: Flagpole      
               geolocation:
@@ -527,7 +632,8 @@ stations:
               instrument_height_in_meters_above_ground: 70
               instrument_viewing_direction: North-West
               instrument_azimuth_in_degrees: 280
-              instrument_degrees_from_nadir: 45      
+              instrument_degrees_from_nadir: 45
+              legacy_acronym: SVB-FOR-P01      
               rois:
                 ROI_01: {'points': [[700, 2048], [300, 600], [3072, 600], [3072, 2048]], 'color': [0, 255, 0], 'thickness': 7, 'updated': '2024-10-29', 'comment':'same ROI as in SVB-FOR-P02, but resized to match the higher resolution (*1.25)'}
               legacy_phenocam_rois:
@@ -551,9 +657,19 @@ stations:
               instrument_height_in_meters_above_ground: 70
               instrument_viewing_direction: North-West
               instrument_azimuth_in_degrees: 280
-              instrument_degrees_from_nadir: 45      
+              instrument_degrees_from_nadir: 45
+              legacy_acronym: SVB-FOR-P02      
               rois:
                 ROI_01: {'points': [[700, 2048], [300, 600], [3072, 600], [3072, 2048]], 'color': [0, 255, 0], 'thickness': 7, 'updated': '2024-10-29'}
               legacy_phenocam_rois:
                 ROI_01: {'points': [[300, 1500], [300, 600], [2800, 600], [2800, 1500]], 'color': [0, 255, 0], 'thickness': 7, 'updated': '2024-10-29', 'comment':'DEPRECATED: Increased camera resolution - It used to be the same as SVB-FOR-P01'}    
+
+            #SVB_FOR_PL02_PHE01:
+            #  id: SVB_FOR_PL02_PHE01
+            # type: phenocam
+            # ecosystem: FOR
+            # location: PL02
+            # instrument_number: PHE01
+            # status: Active
+              
 
