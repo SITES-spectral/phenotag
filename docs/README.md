@@ -89,6 +89,9 @@ Older documentation kept for reference.
 * José M. Beltrán-Abaunza, PhD | Lund University, Department of Physical Geography and Ecosystem Science | SITES spectral Research Engineer
 * Lars Eklundh, Professor | Lund University, Department of Physical Geography and Ecosystem Science | SITES spectral Coordinator
 
+* Kexin Guo | Lund University, Department of Physical Gepgraphy and Ecosystem Science | Bachelor program 2022-2025 | Supported UX and code alpha testing, data analysis and codebase debuging. Thesis to be linked here.
+
+
 ## Development Support
 
 This package was developed with support from [Claude](https://claude.ai/code) (Anthropic's Claude 3.5 Sonnet model), which assisted with code refactoring, documentation organization, and architectural improvements.
@@ -115,7 +118,6 @@ Beltrán-Abaunza, José M., and Lars Eklundh. *PhenoTag: A Python Package for Ph
   address = {Lund, Sweden},
   url = {https://github.com/sites-spectral/phenotag},
   note = {Version [version]}
-}
 ```
 
 *Replace [version] with the specific version number you used.*
