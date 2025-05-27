@@ -251,6 +251,7 @@ When adding new features:
 
 * José M. Beltrán-Abaunza, PhD | Lund University, Department of Physical Geography and Ecosystem Science | SITES spectral Research Engineer
 * Lars Eklundh, Professor | Lund University, Department of Physical Geography and Ecosystem Science | SITES spectral Coordinator
+* Kexin Guo | Lund University, Department of Physical Gepgraphy and Ecosystem Science | Bachelor program 2022-2025 | Supported UX and code alpha testing, data analysis and codebase debuging. Thesis to be linked here.
 
 ## Development Support
 
