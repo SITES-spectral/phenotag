@@ -5,6 +5,18 @@ All notable changes to the PhenoTag project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-11-25
+
+### Added
+- **Quick Start Guide** (`docs/user-guide/quickstart.md`):
+  - Obsidian-compatible markdown with frontmatter and callouts
+  - Step-by-step installation and running instructions
+  - CLI commands reference table
+  - Links to comprehensive documentation
+
+### Changed
+- Updated `docs/README.md` with link to new Quick Start Guide
+
 ## [Unreleased]
 
 ### Added

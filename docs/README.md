@@ -14,6 +14,7 @@ Welcome to the PhenoTag documentation. This guide is organized into sections to 
 ### [User Guide](./user-guide/)
 Start here if you're new to PhenoTag or want to learn how to use the application effectively.
 
+- [**Quick Start Guide**](./user-guide/quickstart.md) - Get running in under 2 minutes
 - [**Getting Started for Beginners**](./user-guide/phenotag_for_beginners.md) - Complete introduction with visual guides
 - [**User Interface Guide**](./user-guide/ui_guide.md) - Comprehensive UI component reference
 - [**Annotation Workflow**](./user-guide/popup_annotation_workflow.md) - Step-by-step annotation process
@@ -70,7 +71,7 @@ Older documentation kept for reference.
 
 ## 🚀 Quick Start
 
-1. **New Users**: Start with the [Getting Started for Beginners](./user-guide/phenotag_for_beginners.md) guide
+1. **New Users**: Start with the [Quick Start Guide](./user-guide/quickstart.md) or [Beginners Guide](./user-guide/phenotag_for_beginners.md)
 2. **Developers**: Check the [Integration Guide](./developer-guide/phenotag_integration_guide.md)
 3. **Configuration**: See [Stations Configuration](./configuration/stations_yaml_schema.md)
 
