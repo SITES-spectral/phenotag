@@ -418,6 +418,16 @@ def render_calendar(normalized_name, selected_instrument, selected_year, selecte
             # Provide feedback
             if available_days:
                 st.success(f"Found {len(available_days)} days with images in {calendar.month_name[selected_month]} {selected_year}")
+
+                # Auto-select first day if none selected
+                if not st.session_state.get('selected_day') and not st.session_state.get('selected_days'):
+                    first_day = available_days[0]
+                    st.session_state.selected_day = first_day
+                    st.session_state.selected_days = [int(first_day)]
+                    # Update selection key used by calendar component
+                    selection_key = f"calendar_selection_{selected_year}_{selected_month}"
+                    st.session_state[selection_key] = [int(first_day)]
+                    print(f"Auto-selected first available day: {first_day}")
             else:
                 st.info(f"No images found for {calendar.month_name[selected_month]} {selected_year}")
 
@@ -497,13 +507,27 @@ def display_calendar_view(normalized_name, selected_instrument):
     
     # Render calendar for the selected year and month
     selected_days = render_calendar(normalized_name, selected_instrument, selected_year, selected_month)
-    
+
+    # If no days are selected but we have available days, auto-select the first one
+    if not selected_days and not st.session_state.get('selected_day'):
+        # Get available days from image_data
+        if key in st.session_state.image_data and selected_year in st.session_state.image_data[key]:
+            available_days = sorted(st.session_state.image_data[key][selected_year].keys())
+            if available_days:
+                first_day = available_days[0]
+                st.session_state.selected_day = first_day
+                st.session_state.selected_days = [int(first_day)]
+                selection_key = f"calendar_selection_{selected_year}_{selected_month}"
+                st.session_state[selection_key] = [int(first_day)]
+                selected_days = [int(first_day)]
+                print(f"Auto-selected first available day after render: {first_day}")
+
     # Check if day selection has changed
     day_changed = False
-    
+
     # Check if current day is different from selected day
     current_day = st.session_state.get('selected_day')
-    
+
     # Handle case where we have days selected in multi-select but no single day
     if selected_days and not current_day:
         # Select the first day in the list
