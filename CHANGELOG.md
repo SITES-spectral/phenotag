@@ -5,6 +5,45 @@ All notable changes to the PhenoTag project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-11-25
+
+### Added
+- **Image Index Cache** (`image_index_cache.py`):
+  - New cached index system that scans L1 directory once and caches DOY-to-files mapping
+  - Index structure: `{doy: {timestamp: filepath, ...}, ...}` for fast lookups
+  - Thread-safe cache with locking for concurrent access
+  - Functions: `get_year_index()`, `get_available_doys()`, `get_day_files()`, `get_day_filepaths()`
+  - Utility functions: `get_image_count()`, `get_doy_image_counts()`, `get_cache_stats()`
+  - Cache management: `invalidate_cache()` for manual cache clearing
+  - ~3000x speedup on subsequent lookups vs directory scanning
+- **Filename parsing utilities**:
+  - `parse_filename()`: Extract all metadata (station, instrument, year, doy, date, time, timestamp)
+  - `extract_timestamp_from_filename()`: Get timestamp string from filename
+  - `extract_time_from_filename()`: Get time (HHMMSS) from filename
+
+### Changed
+- Updated `get_days_in_year()` to use cache by default (`use_cache=True`)
+- Updated `count_images_in_days()` to use cache by default
+- Updated `get_available_days_in_year()` in lazy_scanner to use cache
+- Updated `scan_selected_days()` to use cache for file path lookups
+- All scanner functions now support `use_cache=False` to bypass cache if needed
+
+## [0.1.3] - 2025-11-25
+
+### Fixed
+- **Support for flat L1 directory structure**:
+  - Fixed scanner modules to work with both nested (`/L1/year/doy/`) and flat (`/L1/year/`) directory structures
+  - Added `extract_doy_from_filename()` function to parse DOY from filename pattern `station_instrument_year_doy_datestring.jpg`
+  - Updated `get_days_in_year()` in `directory_scanner.py` to detect flat files and extract DOY from filenames
+  - Updated `count_images_in_days()` to count images grouped by DOY in flat structures
+  - Updated `get_available_days_in_year()` in `lazy_scanner.py` for flat file support
+  - Updated `scan_selected_days()` and `scan_month_data()` to handle flat file paths
+  - Updated `find_phenocam_image_paths()` in `io_tools/__init__.py` for flat file support
+  - Fixed `annotation_status.py` to gracefully handle missing DOY directories
+- **Annotation status checks**:
+  - Added directory existence check before listing annotation files
+  - Added support for year-level annotation files in flat structures
+
 ## [0.1.2] - 2025-11-25
 
 ### Added

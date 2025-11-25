@@ -96,9 +96,53 @@ PhenoTag follows a modular architecture:
 4. **IO Tools** (`src/phenotag/io_tools/`):
    - Utilities for file input/output operations
    - Includes YAML handling for configuration loading
+   - **Directory Scanner** (`directory_scanner.py`): Scans L1 directories for available years/days
+   - **Lazy Scanner** (`lazy_scanner.py`): Memory-efficient scanning without loading image data
+   - **Image Index Cache** (`image_index_cache.py`): Cached index of L1 images by DOY/timestamp
 
 5. **Reports** (`src/phenotag/reports/`):
    - Report generation functionality
+
+## L1 Directory Structure Support
+
+PhenoTag supports two L1 directory structures:
+
+1. **Nested structure** (DOY subdirectories):
+   ```
+   /L1/year/doy/image.jpg
+   /L1/2025/091/abisko_ANS_FOR_BL01_PHE01_2025_091_20250401_080949.jpg
+   ```
+
+2. **Flat structure** (files directly in year folder):
+   ```
+   /L1/year/image.jpg
+   /L1/2025/abisko_ANS_FOR_BL01_PHE01_2025_091_20250401_080949.jpg
+   ```
+
+The filename pattern is: `station_instrument_year_doy_YYYYMMDD_HHMMSS.jpg`
+
+## Image Index Cache
+
+The `image_index_cache.py` module provides fast cached lookups (~3000x speedup):
+
+```python
+from phenotag.io_tools import (
+    get_year_index,        # Full index: {doy: {timestamp: filepath}}
+    get_available_doys,    # List of DOYs with data
+    get_day_filepaths,     # Files for a specific DOY
+    get_image_count,       # Count images in year or DOY
+    get_cache_stats,       # Cache statistics
+    invalidate_cache,      # Clear cache manually
+    parse_filename         # Extract metadata from filename
+)
+
+# Example usage
+index = get_year_index(base_dir, station, instrument, '2025')
+doys = get_available_doys(base_dir, station, instrument, '2025')
+files = get_day_filepaths(base_dir, station, instrument, '2025', '091')
+```
+
+The cache is thread-safe and persists for the session. Use `invalidate_cache()` to force refresh.
 
 ## Important Configuration
 

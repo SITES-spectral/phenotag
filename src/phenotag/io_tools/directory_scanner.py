@@ -61,40 +61,87 @@ def get_available_years(base_dir: Union[str, Path], station_name: str, instrumen
     return years
 
 
-def get_days_in_year(base_dir: Union[str, Path], station_name: str, 
-                   instrument_id: str, year: str) -> List[str]:
+def extract_doy_from_filename(filename: str) -> Optional[str]:
     """
-    Get available days of year by scanning directories without loading image data.
-    
+    Extract day of year (DOY) from a phenocam filename.
+
+    Expected filename pattern: station_instrument_year_doy_datestring.jpg
+    Example: abisko_ANS_FOR_BL01_PHE01_2025_091_20250401_080949.jpg
+
+    Args:
+        filename: Filename to parse
+
+    Returns:
+        DOY as 3-digit string (e.g., "091") or None if not found
+    """
+    import re
+    # Pattern to match DOY after year: _YYYY_DOY_
+    # DOY is 1-3 digits representing day of year (001-366)
+    match = re.search(r'_(\d{4})_(\d{1,3})_(\d{8})_', filename)
+    if match:
+        doy = match.group(2)
+        return doy.zfill(3)  # Ensure 3-digit format
+    return None
+
+
+def get_days_in_year(base_dir: Union[str, Path], station_name: str,
+                   instrument_id: str, year: str, use_cache: bool = True) -> List[str]:
+    """
+    Get available days of year by scanning image files without loading image data.
+
+    Supports two directory structures:
+    1. Flat structure: /L1/year/*.jpg (DOY extracted from filename)
+    2. Nested structure: /L1/year/doy/*.jpg (DOY from directory name)
+
     Args:
         base_dir: Base data directory
         station_name: Station name
         instrument_id: Instrument ID
         year: Year to scan
-        
+        use_cache: If True, use the image index cache for faster lookups
+
     Returns:
         List of day of year strings (padded to 3 digits, e.g., "001")
     """
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
-    
+
     # Get the normalized station name for consistent directory paths
     normalized_name = get_normalized_station_name(station_name)
-    
+
+    # Use cache if requested (faster for repeated lookups)
+    if use_cache:
+        from .image_index_cache import get_available_doys
+        days = get_available_doys(base_dir, normalized_name, instrument_id, year)
+        print(f"Found {len(days)} days in year {year}: {days[:5]}...")
+        return days
+
+    # Fallback: direct directory scan
     # Construct path to year directory
     year_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year
-    
+
     if not year_path.exists() or not year_path.is_dir():
         return []
-    
-    # Get directory names that are digit-only (days of year)
-    days = []
+
+    days_set = set()
+
+    # First, check for DOY subdirectories (original nested structure)
+    has_doy_dirs = False
     for item in year_path.iterdir():
         if item.is_dir() and item.name.isdigit():
-            # Ensure 3-digit format with leading zeros
-            days.append(item.name.zfill(3))
-    
-    # Sort in ascending order
-    days.sort()
+            has_doy_dirs = True
+            days_set.add(item.name.zfill(3))
+
+    # If no DOY directories found, scan for flat files and extract DOY from filenames
+    if not has_doy_dirs:
+        for item in year_path.iterdir():
+            if item.is_file() and item.name.lower().endswith(('.jpg', '.jpeg')):
+                doy = extract_doy_from_filename(item.name)
+                if doy:
+                    days_set.add(doy)
+
+    # Convert to sorted list
+    days = sorted(list(days_set))
+
     # Debug output
     print(f"Found {len(days)} days in year {year}: {days[:5]}...")
     return days
@@ -131,9 +178,14 @@ def get_days_by_month(year: Union[str, int], days: List[str]) -> Dict[int, List[
 
 
 def count_images_in_days(base_dir: Union[str, Path], station_name: str,
-                       instrument_id: str, year: str, days: List[str]) -> Dict[str, int]:
+                       instrument_id: str, year: str, days: List[str],
+                       use_cache: bool = True) -> Dict[str, int]:
     """
-    Count images in each day directory without loading image data.
+    Count images in each day without loading image data.
+
+    Supports two directory structures:
+    1. Flat structure: /L1/year/*.jpg (DOY extracted from filename)
+    2. Nested structure: /L1/year/doy/*.jpg (files in DOY subdirectories)
 
     Args:
         base_dir: Base data directory
@@ -141,60 +193,91 @@ def count_images_in_days(base_dir: Union[str, Path], station_name: str,
         instrument_id: Instrument ID
         year: Year to scan
         days: List of day of year strings
+        use_cache: If True, use the image index cache for faster lookups
 
     Returns:
         Dictionary mapping day of year to image count
     """
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
-    
+
     # Get the normalized station name for consistent directory paths
     normalized_name = get_normalized_station_name(station_name)
-    
-    counts = {}
+
+    # Use cache if requested (faster for repeated lookups)
+    if use_cache:
+        from .image_index_cache import get_doy_image_counts
+        all_counts = get_doy_image_counts(base_dir, normalized_name, instrument_id, year)
+
+        # Filter to only requested days
+        counts = {}
+        for day in days:
+            day_padded = day.zfill(3)
+            counts[day] = all_counts.get(day_padded, 0)
+
+        # Debug output summary
+        total_images = sum(counts.values())
+        days_with_images = sum(1 for c in counts.values() if c > 0)
+        print(f"Found {total_images} total images across {days_with_images} days (of {len(days)} requested)")
+        return counts
+
+    # Fallback: direct directory scan
+    # Construct path to year directory
+    year_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year
+
+    if not year_path.exists() or not year_path.is_dir():
+        return {day: 0 for day in days}
 
     # Add debug output for tracing
-    print(f"Counting images for {len(days)} days in {base_dir}/{normalized_name}/phenocams/products/{instrument_id}/L1/{year}")
+    print(f"Counting images for {len(days)} days in {year_path}")
 
-    for day in days:
-        # Try both with and without leading zeros to handle filesystem differences
-        day_with_zeros = day
-        day_without_zeros = day.lstrip('0') if day else '0'
-        
-        # Also try with integer format (some systems might store as integer)
-        day_as_int = str(int(day))
+    # First, determine if we have DOY subdirectories or flat structure
+    has_doy_dirs = any(item.is_dir() and item.name.isdigit() for item in year_path.iterdir())
 
-        # First try with the original format
-        day_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_with_zeros
+    counts = {}
 
-        # If that doesn't exist, try without leading zeros
-        if not day_path.exists() or not day_path.is_dir():
-            day_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_without_zeros
+    if has_doy_dirs:
+        # Original nested structure: /L1/year/doy/*.jpg
+        for day in days:
+            # Try both with and without leading zeros to handle filesystem differences
+            day_with_zeros = day.zfill(3)
+            day_without_zeros = day.lstrip('0') or '0'
+            day_as_int = str(int(day))
 
-            # If that still doesn't exist, try with integer format
-            if not day_path.exists() or not day_path.is_dir():
-                day_path = base_dir / normalized_name / "phenocams" / "products" / instrument_id / "L1" / year / day_as_int
-                
-                # If that still doesn't exist, mark as having zero images
-                if not day_path.exists() or not day_path.is_dir():
-                    counts[day] = 0
-                    continue
+            day_path = None
+            for day_format in [day_with_zeros, day_without_zeros, day_as_int]:
+                candidate = year_path / day_format
+                if candidate.exists() and candidate.is_dir():
+                    day_path = candidate
+                    break
 
-        # Count image files
-        image_count = 0
-        image_files = []
-        for item in day_path.iterdir():
+            if day_path is None:
+                counts[day] = 0
+                continue
+
+            # Count image files in the day directory
+            image_count = sum(1 for item in day_path.iterdir()
+                            if item.is_file() and item.name.lower().endswith(('.jpg', '.jpeg')))
+            counts[day] = image_count
+
+    else:
+        # Flat structure: /L1/year/*.jpg (DOY in filename)
+        # Count all images once and group by DOY
+        day_counts = {}
+        for item in year_path.iterdir():
             if item.is_file() and item.name.lower().endswith(('.jpg', '.jpeg')):
-                image_count += 1
-                if len(image_files) < 3:  # Keep track of first few files for debugging
-                    image_files.append(item.name)
+                doy = extract_doy_from_filename(item.name)
+                if doy:
+                    day_counts[doy] = day_counts.get(doy, 0) + 1
 
-        counts[day] = image_count
-        
-        # Add debugging output
-        if image_count > 0:
-            print(f"Day {day}: Found {image_count} images in {day_path} - Examples: {image_files}")
-        else:
-            print(f"Day {day}: No images found in {day_path}")
+        # Map requested days to their counts
+        for day in days:
+            day_padded = day.zfill(3)
+            counts[day] = day_counts.get(day_padded, 0)
+
+    # Debug output summary
+    total_images = sum(counts.values())
+    days_with_images = sum(1 for c in counts.values() if c > 0)
+    print(f"Found {total_images} total images across {days_with_images} days (of {len(days)} requested)")
 
     return counts
 

@@ -100,28 +100,46 @@ def check_day_annotation_status(base_dir, station_name, instrument_id, year, day
         except Exception as e:
             print(f"Error reading day status file: {e}")
     
-    # Check for per-image annotation files
-    per_image_files = [f for f in os.listdir(day_dir) 
-                      if f.endswith('_annotations.yaml') and not f.startswith('day_status_')]
-    
-    if per_image_files:
-        # At least one per-image file exists, so it's at least in progress
-        return 'in_progress'
-    
-    # Check legacy day-level annotation file as last resort
-    legacy_annotations_file = os.path.join(day_dir, f"annotations_{day}.yaml")
-    if os.path.exists(legacy_annotations_file):
+    # Check if the day directory exists (for nested structure)
+    if os.path.exists(day_dir) and os.path.isdir(day_dir):
+        # Check for per-image annotation files
         try:
-            # Verify contents to make sure it's complete
-            with open(legacy_annotations_file, 'r') as f:
-                data = yaml.safe_load(f)
-                # Check if it has annotations
-                if data and 'annotations' in data and data['annotations']:
-                    return 'completed'
+            per_image_files = [f for f in os.listdir(day_dir)
+                              if f.endswith('_annotations.yaml') and not f.startswith('day_status_')]
+
+            if per_image_files:
+                # At least one per-image file exists, so it's at least in progress
+                return 'in_progress'
         except Exception as e:
-            print(f"Error reading legacy annotation file: {e}")
-            return 'not_annotated'
-    
+            print(f"Error listing annotation files: {e}")
+
+        # Check legacy day-level annotation file as last resort
+        legacy_annotations_file = os.path.join(day_dir, f"annotations_{day}.yaml")
+        if os.path.exists(legacy_annotations_file):
+            try:
+                # Verify contents to make sure it's complete
+                with open(legacy_annotations_file, 'r') as f:
+                    data = yaml.safe_load(f)
+                    # Check if it has annotations
+                    if data and 'annotations' in data and data['annotations']:
+                        return 'completed'
+            except Exception as e:
+                print(f"Error reading legacy annotation file: {e}")
+                return 'not_annotated'
+
+    # For flat file structure, check for annotation file at year level
+    # Annotation file would be named: annotations_{year}_{day}.yaml
+    year_dir = os.path.dirname(day_dir)
+    flat_annotations_file = os.path.join(year_dir, f"annotations_{year}_{day}.yaml")
+    if os.path.exists(flat_annotations_file):
+        try:
+            with open(flat_annotations_file, 'r') as f:
+                data = yaml.safe_load(f)
+                if data:
+                    return 'completed' if data.get('completed', False) else 'in_progress'
+        except Exception as e:
+            print(f"Error reading flat annotation file: {e}")
+
     # No annotation files found
     return 'not_annotated'
 

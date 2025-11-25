@@ -27,7 +27,23 @@ from .directory_scanner import (
     get_date_from_doy,
     get_month_with_most_images,
     format_month_year,
-    create_placeholder_data
+    create_placeholder_data,
+    extract_doy_from_filename
+)
+
+# Import the image index cache
+from .image_index_cache import (
+    get_year_index,
+    get_available_doys,
+    get_day_files,
+    get_day_filepaths,
+    get_image_count,
+    get_doy_image_counts,
+    invalidate_cache,
+    get_cache_stats,
+    parse_filename,
+    extract_timestamp_from_filename,
+    extract_time_from_filename
 )
 
 # Keep these imports for backwards compatibility
@@ -245,22 +261,23 @@ class PhenocamDataPath(BaseModel):
 
 
 def find_phenocam_image_paths(
-    base_dir: Union[str, Path], 
+    base_dir: Union[str, Path],
     station_name: str,
     instrument_id: str
 ) -> Dict[str, Dict[str, List[str]]]:
     """
-    Find paths to phenocam image files organized in subdirectories by year and day of year.
+    Find paths to phenocam image files organized by year and day of year.
     This is a memory-efficient version that only returns file paths, not their contents.
-    
-    The expected directory structure is:
-    {base_dir}/{station_name}/phenocams/products/{instrument_id}/L1/{year}/{day_of_year}/*.jpg
-    
+
+    Supports two directory structures:
+    1. Flat structure: /L1/year/*.jpg (DOY extracted from filename)
+    2. Nested structure: /L1/year/doy/*.jpg (files in DOY subdirectories)
+
     Parameters:
         base_dir (str or Path): The base directory to search in (PHENOCAMS_DATA_DIR)
         station_name (str): The normalized station name
         instrument_id (str): The instrument ID to find images for
-    
+
     Returns:
         Dict: A nested dictionary of file paths:
         {
@@ -275,12 +292,12 @@ def find_phenocam_image_paths(
     """
     # Convert to Path if it's a string
     base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
-    
+
     # Check if base directory exists
     if not base_dir.exists() or not base_dir.is_dir():
         print(f"Base directory {base_dir} does not exist")
         return {}
-    
+
     try:
         # Validate the path using Pydantic
         data_path = PhenocamDataPath(
@@ -288,36 +305,48 @@ def find_phenocam_image_paths(
             station_name=station_name,
             instrument_id=instrument_id
         )
-        
+
         # Get the instrument L1 directory
         instrument_dir = data_path.get_instrument_path()
-        
+
         # Check if the directory exists
         if not data_path.exists():
             return {}
-        
+
     except Exception as e:
         print(f"Error validating data path: {e}")
         return {}
-    
+
     # Initialize the result dictionary
     result = defaultdict(lambda: defaultdict(list))
-    
+
     # Walk through the directory structure
     for year_dir in instrument_dir.iterdir():
         if year_dir.is_dir() and year_dir.name.isdigit():
             year = year_dir.name
-            
-            for doy_dir in year_dir.iterdir():
-                if doy_dir.is_dir() and doy_dir.name.isdigit():
-                    # Format the day of year as a 3-digit string with leading zeros
-                    doy = doy_dir.name.zfill(3)
-                    
-                    # Find all JPEG files in this directory
-                    for file_path in doy_dir.glob("*.jp*g"):
-                        if file_path.is_file():
+
+            # Check if this year has DOY subdirectories or flat files
+            has_doy_dirs = any(item.is_dir() and item.name.isdigit() for item in year_dir.iterdir())
+
+            if has_doy_dirs:
+                # Original nested structure: /L1/year/doy/*.jpg
+                for doy_dir in year_dir.iterdir():
+                    if doy_dir.is_dir() and doy_dir.name.isdigit():
+                        # Format the day of year as a 3-digit string with leading zeros
+                        doy = doy_dir.name.zfill(3)
+
+                        # Find all JPEG files in this directory
+                        for file_path in doy_dir.glob("*.jp*g"):
+                            if file_path.is_file():
+                                result[year][doy].append(str(file_path))
+            else:
+                # Flat structure: /L1/year/*.jpg (DOY in filename)
+                for file_path in year_dir.iterdir():
+                    if file_path.is_file() and file_path.name.lower().endswith(('.jpg', '.jpeg')):
+                        doy = extract_doy_from_filename(file_path.name)
+                        if doy:
                             result[year][doy].append(str(file_path))
-    
+
     # Convert defaultdict to regular dict for better serialization
     return {year: dict(doys) for year, doys in result.items()}
 
