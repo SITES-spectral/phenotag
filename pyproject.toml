@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "phenotag"
-version = "0.1.4"
+version = "0.1.5"
 description = "Python application for phenological annotation, part of the SITES Spectral ecosystem"
 authors = [
     {name = "SITES Spectral Team"}

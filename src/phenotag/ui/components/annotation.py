@@ -993,20 +993,24 @@ def create_default_annotations(current_filepath, use_temp_storage=False):
             print(f"Error loading ROIs: {str(e)}")
     
     # Create default annotations
-    annotation_data = [
-        {
-            "roi_name": "ROI_00",  #(Default - Full Image)
-            "discard": False,
-            "snow_presence": False,
-            "flags": [],  # Empty list - no actual quality flags
-            "not_needed": False  # No longer used but kept for compatibility
-        }
-    ]
-    
-    # Add an entry for each custom ROI
-    for roi_name in roi_names:
+    annotation_data = []
+
+    # If we have ROI names from instrument config, use those
+    # Otherwise fall back to just ROI_00
+    if roi_names:
+        # Use the instrument's ROI names (which should include ROI_00)
+        for roi_name in roi_names:
+            annotation_data.append({
+                "roi_name": roi_name,
+                "discard": False,
+                "snow_presence": False,
+                "flags": [],  # Empty list - no actual quality flags
+                "not_needed": False  # No longer used but kept for compatibility
+            })
+    else:
+        # Fallback: only ROI_00 if no instrument ROIs loaded
         annotation_data.append({
-            "roi_name": roi_name,
+            "roi_name": "ROI_00",  # Default - Full Image
             "discard": False,
             "snow_presence": False,
             "flags": [],  # Empty list - no actual quality flags
